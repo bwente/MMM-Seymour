@@ -27,13 +27,20 @@ Module.register("MMM-Seymour", {
   },
 
   start() {
+    if (!Array.isArray(this.config.channels)) this.config.channels = [];
+
     this.activeIndex = 0;
     this.isOpen = false;
+    this.currentPage = null;
+    this.maxPages = null;
+    this._closeTimer = null;
 
     if (this.config.enableKeyboard) {
       this._boundKeyHandler = (e) => this.handleKeyEvent(e);
       document.addEventListener("keydown", this._boundKeyHandler);
     }
+
+    this.sendNotification("QUERY_PAGE_NUMBER");
 
     Log.info("MMM-Seymour started");
   },
@@ -43,12 +50,26 @@ Module.register("MMM-Seymour", {
       document.removeEventListener("keydown", this._boundKeyHandler);
       this._boundKeyHandler = null;
     }
+
+    if (this._closeTimer) {
+      clearTimeout(this._closeTimer);
+      this._closeTimer = null;
+    }
   },
 
-  // Important: DO NOT remove the key listener on suspend.
-  // MMM-pages may suspend modules that are not fixed.
-  // If we remove the listener, Enter stops working.
+  // Keep keyboard controls available if another integration suspends the module.
   suspend() {},
+
+  notificationReceived(notification, payload) {
+    if (notification === "MAX_PAGES_CHANGED") {
+      if (Number.isInteger(payload) && payload >= 0) this.maxPages = payload;
+      return;
+    }
+
+    if (notification === "NEW_PAGE" || notification === "PAGE_NUMBER_IS") {
+      if (Number.isInteger(payload) && payload >= 0) this.currentPage = payload;
+    }
+  },
 
   handleKeyEvent(e) {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -62,6 +83,11 @@ Module.register("MMM-Seymour", {
     }
 
     const key = e.key;
+
+    if (key === "Enter" && e.repeat) {
+      if (this.isOpen) e.preventDefault();
+      return;
+    }
 
     if (key === "Enter") {
       if (!this.isOpen) {
@@ -88,7 +114,7 @@ Module.register("MMM-Seymour", {
       this.activeIndex =
         (this.activeIndex - 1 + this.config.channels.length) %
         this.config.channels.length;
-      this.updateDom(0);
+      this.refreshDom(0);
       e.preventDefault();
       return;
     }
@@ -96,7 +122,7 @@ Module.register("MMM-Seymour", {
     if (key === "ArrowRight") {
       this.activeIndex =
         (this.activeIndex + 1) % this.config.channels.length;
-      this.updateDom(0);
+      this.refreshDom(0);
       e.preventDefault();
       return;
     }
@@ -104,35 +130,74 @@ Module.register("MMM-Seymour", {
 
   openSelector() {
     if (!this.config.channels.length) return;
-    if (this.activeIndex >= this.config.channels.length) this.activeIndex = 0;
+
+    const currentIndex =
+      this.currentPage === null
+        ? -1
+        : this.config.channels.findIndex(
+            (channel) => this.getChannelPage(channel) === this.currentPage
+          );
+
+    if (currentIndex !== -1) {
+      this.activeIndex = currentIndex;
+    } else if (this.activeIndex >= this.config.channels.length) {
+      this.activeIndex = 0;
+    }
+
     this.isOpen = true;
-    this.updateDom(150);
+    this.refreshDom(150);
   },
 
   closeSelector() {
     this.isOpen = false;
-    this.updateDom(150);
+    this.refreshDom(150);
+  },
+
+  refreshDom(animationSpeed) {
+    this.updateDom(animationSpeed, () => {
+      if (!this.isOpen) return;
+
+      const wrapper = document.getElementById(this.identifier);
+      const activeItem = wrapper && wrapper.querySelector(".seymour-item.active");
+      if (activeItem) {
+        activeItem.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "center"
+        });
+      }
+    });
+  },
+
+  getChannelPage(channel) {
+    if (!channel) return null;
+
+    const pageIndex = channel.page;
+    if (!Number.isInteger(pageIndex) || pageIndex < 0) return null;
+    if (this.maxPages !== null && pageIndex >= this.maxPages) return null;
+
+    return pageIndex;
   },
 
   activateChannel() {
     const channel = this.config.channels[this.activeIndex];
     if (!channel) return;
 
-    const pageIndex = Number(channel.page);
+    const pageIndex = this.getChannelPage(channel);
 
-    if (!Number.isFinite(pageIndex)) {
+    if (pageIndex === null) {
       console.error("[MMM-Seymour] Invalid channel.page:", channel.page, channel);
       return;
     }
 
-    const intPage = Math.trunc(pageIndex);
+    console.log("[MMM-Seymour] PAGE_CHANGED ->", pageIndex, "channel:", channel);
 
-    console.log("[MMM-Seymour] PAGE_CHANGED ->", intPage, "channel:", channel);
-
-    this.sendNotification("PAGE_CHANGED", intPage);
+    this.sendNotification("PAGE_CHANGED", pageIndex);
 
     // Close selector on next tick so PAGE_CHANGED is not affected by our updateDom
-    setTimeout(() => {
+    if (this._closeTimer) clearTimeout(this._closeTimer);
+    this._closeTimer = setTimeout(() => {
+      this._closeTimer = null;
       this.closeSelector();
     }, 0);
   }
