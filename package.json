@@ -1,0 +1,12 @@
+{
+  "name": "mmm-seymour",
+  "version": "0.1.0",
+  "description": "Keyboard-driven page selector for MagicMirror² and MMM-pages",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

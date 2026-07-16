@@ -1,0 +1,91 @@
+.MMM-Seymour {
+  pointer-events: auto;
+}
+
+.page-hidden .MMM-Seymour {
+  display: block !important;
+  opacity: 1 !important;
+}
+
+
+.seymour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+}
+
+.seymour-selector {
+  position: fixed;
+  left: 50%;
+  bottom: 120px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.seymour-selector.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.seymour-selector.is-open ~ .module iframe,
+.seymour-selector.is-open iframe {
+  pointer-events: none;
+}
+
+.seymour-strip {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: center;
+}
+
+.seymour-item {
+  opacity: 0.55;
+  transform: scale(0.85);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  text-align: center;
+}
+
+.seymour-item img {
+  display: block;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.seymour-item.active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.seymour-item.active img {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9);
+}
+
+.seymour-label {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #fff;
+  opacity: 0.85;
+}
+
+/* Sizes */
+.seymour-selector.small img {
+  width: 120px;
+  height: 90px;
+}
+
+.seymour-selector.medium img {
+  width: 160px;
+  height: 120px;
+}
+
+.seymour-selector.large img {
+  width: 200px;
+  height: 150px;
+}

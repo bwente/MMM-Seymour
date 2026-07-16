@@ -1,0 +1,17 @@
+<div class="seymour-root">
+  <div class="seymour-selector {{ selectorSize }} {% if isOpen %}is-open{% endif %}">
+    <div class="seymour-strip">
+      {% for channel in channels %}
+        <div class="seymour-item {% if loop.index0 == activeIndex %}active{% endif %}">
+          <img
+            src="modules/MMM-Seymour/assets/themes/default/{{ channel.thumbnail or 'placeholder.png' }}"
+            alt="{{ channel.label or 'Unnamed channel' }}"
+          />
+          {% if showLabels %}
+            <div class="seymour-label">{{ channel.label }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
