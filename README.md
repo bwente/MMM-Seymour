@@ -24,11 +24,28 @@ translate button presses into keyboard events.
 From the MagicMirror `modules` directory:
 
 ```sh
-git clone YOUR_REPOSITORY_URL MMM-Seymour
+git clone https://github.com/bwente/MMM-Seymour.git
 ```
 
 No runtime package installation is required. Add the module to `config/config.js`
 and ensure MMM-pages is installed and configured.
+
+MMM-Seymour must also be listed in MMM-pages' `fixed` array so the selector
+remains visible and available from every page:
+
+```js
+{
+  module: "MMM-pages",
+  config: {
+    fixed: ["MMM-Seymour", "MMM-page-indicator"],
+    modules: [
+      ["clock"],
+      ["weather"],
+      ["newsfeed"]
+    ]
+  }
+}
+```
 
 ## Configuration
 
@@ -56,9 +73,12 @@ and ensure MMM-pages is installed and configured.
 | `enableKeyboard` | boolean | `true` | Register the global keyboard controls. |
 | `channels` | array | `[]` | Ordered list of pages available in the selector. |
 
-Each channel accepts `label`, a zero-based MMM-pages `page`, and a `thumbnail`
-filename from `assets/themes/default`. Missing thumbnail names use
+Each channel accepts `label`, a non-negative integer MMM-pages `page`, and a
+`thumbnail` filename from `assets/themes/default`. Missing thumbnail names use
 `placeholder.png`.
+
+MMM-Seymour listens for MMM-pages' `NEW_PAGE` notification and highlights the
+currently visible page whenever the selector opens.
 
 ## Hardware project
 
@@ -91,7 +111,6 @@ MMM-pages versions used by the target mirror.
 
 ## Release checklist
 
-- Replace `YOUR_REPOSITORY_URL` after creating the GitHub repository.
 - Choose and add a license before making the repository public.
 - Confirm that every bundled image may be redistributed under that license.
 - Test keyboard input and page changes on the target hardware.

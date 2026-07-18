@@ -2,12 +2,6 @@
   pointer-events: auto;
 }
 
-.page-hidden .MMM-Seymour {
-  display: block !important;
-  opacity: 1 !important;
-}
-
-
 .seymour-root {
   position: fixed;
   inset: 0;
@@ -24,7 +18,14 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+  scrollbar-width: none;
   transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.seymour-selector::-webkit-scrollbar {
+  display: none;
 }
 
 .seymour-selector.is-open {
@@ -33,16 +34,13 @@
   pointer-events: auto;
 }
 
-.seymour-selector.is-open ~ .module iframe,
-.seymour-selector.is-open iframe {
-  pointer-events: none;
-}
-
 .seymour-strip {
   display: flex;
   gap: 24px;
   align-items: center;
   justify-content: center;
+  min-width: max-content;
+  padding: 4px;
 }
 
 .seymour-item {
