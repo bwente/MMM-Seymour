@@ -60,6 +60,13 @@ Each channel accepts `label`, a zero-based MMM-pages `page`, and a `thumbnail`
 filename from `assets/themes/default`. Missing thumbnail names use
 `placeholder.png`.
 
+## Hardware project
+
+Enclosure, wiring, WLED, CAD, fabrication, and assembly work is maintained in
+the companion [Seymour-Hardware](https://github.com/bwente/Seymour-Hardware)
+repository. See [Hardware integration](docs/hardware-integration.md) for the
+shared control and software contract.
+
 ## Controls
 
 | Key | Action |
