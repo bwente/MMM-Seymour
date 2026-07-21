@@ -2,9 +2,14 @@
 
 Module.register("MMM-Seymour", {
   defaults: {
+    theme: "default",
     selectorSize: "medium",
     showLabels: true,
     enableKeyboard: true,
+
+    autoDismiss: false,
+    autoDismissDelay: 5000,
+
     channels: []
   },
 
@@ -17,8 +22,13 @@ Module.register("MMM-Seymour", {
   },
 
   getTemplateData() {
+    const themeBase = `/modules/MMM-Seymour/assets/themes/${this.config.theme}`;
+
     return {
-      channels: this.config.channels,
+      channels: this.config.channels.map((channel) => ({
+        ...channel,
+        thumbnailUrl: `${themeBase}/${channel.thumbnail}`
+      })),
       activeIndex: this.activeIndex,
       isOpen: this.isOpen,
       showLabels: this.config.showLabels,
@@ -27,177 +37,199 @@ Module.register("MMM-Seymour", {
   },
 
   start() {
-    if (!Array.isArray(this.config.channels)) this.config.channels = [];
-
     this.activeIndex = 0;
     this.isOpen = false;
-    this.currentPage = null;
-    this.maxPages = null;
-    this._closeTimer = null;
+    this.currentPage = 0;
+    this.dismissTimer = null;
 
     if (this.config.enableKeyboard) {
       this._boundKeyHandler = (e) => this.handleKeyEvent(e);
       document.addEventListener("keydown", this._boundKeyHandler);
     }
 
-    this.sendNotification("QUERY_PAGE_NUMBER");
-
     Log.info("MMM-Seymour started");
   },
 
-  stop() {
-    if (this._boundKeyHandler) {
-      document.removeEventListener("keydown", this._boundKeyHandler);
-      this._boundKeyHandler = null;
-    }
-
-    if (this._closeTimer) {
-      clearTimeout(this._closeTimer);
-      this._closeTimer = null;
-    }
-  },
-
-  // Keep keyboard controls available if another integration suspends the module.
   suspend() {},
 
-  notificationReceived(notification, payload) {
-    if (notification === "MAX_PAGES_CHANGED") {
-      if (Number.isInteger(payload) && payload >= 0) this.maxPages = payload;
-      return;
-    }
+  /* -------------------------
+   * Auto-dismiss helpers
+   * ------------------------- */
 
-    if (notification === "NEW_PAGE" || notification === "PAGE_NUMBER_IS") {
-      if (Number.isInteger(payload) && payload >= 0) this.currentPage = payload;
+  startAutoDismissTimer() {
+    if (!this.config.autoDismiss) return;
+
+    this.clearAutoDismissTimer();
+
+    this.dismissTimer = setTimeout(() => {
+      if (this.isOpen) {
+        this.closeSelector();
+      }
+    }, this.config.autoDismissDelay);
+  },
+
+  clearAutoDismissTimer() {
+    if (this.dismissTimer) {
+      clearTimeout(this.dismissTimer);
+      this.dismissTimer = null;
     }
   },
 
-  handleKeyEvent(e) {
-    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+  /* -------------------------
+   * Notifications
+   * ------------------------- */
 
-    const target = e.target;
-    if (
-      target &&
-      (target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName))
-    ) {
-      return;
+  notificationReceived(notification) {
+    switch (notification) {
+      case "SEYMOUR_PRESS":
+        this.handleAction("PRESS");
+        break;
+
+      case "SEYMOUR_ROTATE_LEFT":
+        this.handleAction("ROTATE_LEFT");
+        break;
+
+      case "SEYMOUR_ROTATE_RIGHT":
+        this.handleAction("ROTATE_RIGHT");
+        break;
+
+      case "ATTENTION_ON":
+        this.attentionOn();
+        break;
+
+      case "ATTENTION_OFF":
+        this.attentionOff();
+        break;
     }
+  },
 
-    const key = e.key;
+  /* -------------------------
+   * Unified action handler
+   * ------------------------- */
 
-    if (key === "Enter" && e.repeat) {
-      if (this.isOpen) e.preventDefault();
-      return;
-    }
-
-    if (key === "Enter") {
+  handleAction(action) {
+    if (action === "PRESS") {
       if (!this.isOpen) {
-        if (!this.config.channels.length) return;
         this.openSelector();
       } else {
         this.activateChannel();
       }
-      e.preventDefault();
+      return;
+    }
+
+    if (!this.isOpen) return;
+
+    if (action === "ROTATE_LEFT") {
+      this.activeIndex =
+        (this.activeIndex - 1 + this.config.channels.length) %
+        this.config.channels.length;
+      this.updateDom(0);
+      this.startAutoDismissTimer();
+      return;
+    }
+
+    if (action === "ROTATE_RIGHT") {
+      this.activeIndex =
+        (this.activeIndex + 1) % this.config.channels.length;
+      this.updateDom(0);
+      this.startAutoDismissTimer();
+      return;
+    }
+  },
+
+  /* -------------------------
+   * Keyboard input
+   * ------------------------- */
+
+  handleKeyEvent(e) {
+    const key = e.key;
+
+    if (key === "Enter") {
+      this.handleAction("PRESS");
       return;
     }
 
     if (key === "Escape") {
-      if (this.isOpen) {
-        this.closeSelector();
-        e.preventDefault();
-      }
+      if (this.isOpen) this.closeSelector();
       return;
     }
 
-    if (!this.isOpen || !this.config.channels.length) return;
-
     if (key === "ArrowLeft") {
-      this.activeIndex =
-        (this.activeIndex - 1 + this.config.channels.length) %
-        this.config.channels.length;
-      this.refreshDom(0);
-      e.preventDefault();
+      this.handleAction("ROTATE_LEFT");
       return;
     }
 
     if (key === "ArrowRight") {
-      this.activeIndex =
-        (this.activeIndex + 1) % this.config.channels.length;
-      this.refreshDom(0);
-      e.preventDefault();
+      this.handleAction("ROTATE_RIGHT");
       return;
     }
   },
 
+  /* -------------------------
+   * Selector control
+   * ------------------------- */
+
   openSelector() {
-    if (!this.config.channels.length) return;
+    const wledIP = "http://wled-seymour.local";
+    fetch(`${wledIP}/win&PL=1`).catch(err =>
+      console.error("WLED Error:", err)
+    );
 
-    const currentIndex =
-      this.currentPage === null
-        ? -1
-        : this.config.channels.findIndex(
-            (channel) => this.getChannelPage(channel) === this.currentPage
-          );
+    const idx = this.config.channels.findIndex(
+      (c) => Number(c.page) === this.currentPage
+    );
 
-    if (currentIndex !== -1) {
-      this.activeIndex = currentIndex;
-    } else if (this.activeIndex >= this.config.channels.length) {
-      this.activeIndex = 0;
+    if (idx !== -1) {
+      this.activeIndex = idx;
     }
 
     this.isOpen = true;
-    this.refreshDom(150);
+    this.updateDom(150);
+    this.startAutoDismissTimer();
   },
 
   closeSelector() {
+    const wledIP = "http://wled-seymour.local";
+    fetch(`${wledIP}/win&PL=2`).catch(err =>
+      console.error("WLED Error:", err)
+    );
+
     this.isOpen = false;
-    this.refreshDom(150);
+    this.clearAutoDismissTimer();
+    this.updateDom(150);
   },
 
-  refreshDom(animationSpeed) {
-    this.updateDom(animationSpeed, () => {
-      if (!this.isOpen) return;
+  /* -------------------------
+   * Attention LED control
+   * ------------------------- */
 
-      const wrapper = document.getElementById(this.identifier);
-      const activeItem = wrapper && wrapper.querySelector(".seymour-item.active");
-      if (activeItem) {
-        activeItem.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-          inline: "center"
-        });
-      }
-    });
+  attentionOn() {
+    const wledIP = "http://wled-seymour.local";
+    fetch(`${wledIP}/win&PL=3`).catch(err =>
+      console.error("WLED Error:", err)
+    );
   },
 
-  getChannelPage(channel) {
-    if (!channel) return null;
-
-    const pageIndex = channel.page;
-    if (!Number.isInteger(pageIndex) || pageIndex < 0) return null;
-    if (this.maxPages !== null && pageIndex >= this.maxPages) return null;
-
-    return pageIndex;
+  attentionOff() {
+    const wledIP = "http://wled-seymour.local";
+    fetch(`${wledIP}/win&PL=2`).catch(err =>
+      console.error("WLED Error:", err)
+    );
   },
 
   activateChannel() {
     const channel = this.config.channels[this.activeIndex];
     if (!channel) return;
 
-    const pageIndex = this.getChannelPage(channel);
-
-    if (pageIndex === null) {
+    const pageIndex = Number(channel.page);
+    if (!Number.isFinite(pageIndex)) {
       console.error("[MMM-Seymour] Invalid channel.page:", channel.page, channel);
       return;
     }
 
-    console.log("[MMM-Seymour] PAGE_CHANGED ->", pageIndex, "channel:", channel);
+    this.sendNotification("PAGE_CHANGED", Math.trunc(pageIndex));
 
-    this.sendNotification("PAGE_CHANGED", pageIndex);
-
-    // Close selector on next tick so PAGE_CHANGED is not affected by our updateDom
-    if (this._closeTimer) clearTimeout(this._closeTimer);
-    this._closeTimer = setTimeout(() => {
-      this._closeTimer = null;
+    setTimeout(() => {
       this.closeSelector();
     }, 0);
   }
