@@ -57,6 +57,8 @@ remains visible and available from every page:
     selectorSize: "medium",
     showLabels: true,
     enableKeyboard: true,
+    enableTouch: true,
+    showTouchLauncher: true,
     autoDismiss: true,
     autoDismissDelay: 4000,
     wled: {
@@ -79,6 +81,8 @@ remains visible and available from every page:
 | `theme` | string | `"default"` | Theme folder below `assets/themes`. |
 | `showLabels` | boolean | `true` | Show the channel label below each image. |
 | `enableKeyboard` | boolean | `true` | Register the global keyboard controls. |
+| `enableTouch` | boolean | `true` | Enable touchscreen channel activation and tap-outside dismissal. |
+| `showTouchLauncher` | boolean | `true` | Show a compact on-screen button that opens the channel selector. |
 | `autoDismiss` | boolean | `false` | Close an open selector after inactivity. |
 | `autoDismissDelay` | number | `5000` | Auto-dismiss delay in milliseconds. |
 | `wled` | object | See example | Optional WLED endpoint and preset mapping. |
@@ -106,12 +110,19 @@ shared control and software contract.
 | Left / Right | Move through channels while the selector is open. |
 | Escape | Close the selector without changing pages. |
 
+Touching the launcher opens the same selector used by the encoder. Touch a
+channel to activate it immediately, or touch the darkened area outside the
+selector to close it without changing pages.
+
 Keyboard shortcuts are ignored while typing in input, select, textarea, or
 content-editable elements.
 
 The equivalent MagicMirror notifications are `SEYMOUR_PRESS`,
 `SEYMOUR_ROTATE_LEFT`, and `SEYMOUR_ROTATE_RIGHT`. `ATTENTION_ON` and
 `ATTENTION_OFF` select or clear the configured WLED attention state.
+
+Attention is tracked by the sending MagicMirror module. One module clearing its
+attention does not turn off the ring while another module still requires it.
 
 ## Development
 

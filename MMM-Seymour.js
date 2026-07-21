@@ -6,6 +6,8 @@ Module.register("MMM-Seymour", {
     selectorSize: "medium",
     showLabels: true,
     enableKeyboard: true,
+    enableTouch: true,
+    showTouchLauncher: true,
     autoDismiss: false,
     autoDismissDelay: 5000,
     wled: {
@@ -41,7 +43,9 @@ Module.register("MMM-Seymour", {
       activeIndex: this.activeIndex,
       isOpen: this.isOpen,
       showLabels: this.config.showLabels,
-      selectorSize: this.config.selectorSize
+      selectorSize: this.config.selectorSize,
+      enableTouch: this.config.enableTouch,
+      showTouchLauncher: this.config.showTouchLauncher
     };
   },
 
@@ -53,6 +57,7 @@ Module.register("MMM-Seymour", {
     this.currentPage = null;
     this.maxPages = null;
     this.attentionActive = false;
+    this.attentionSources = new Set();
     this.dismissTimer = null;
     this.closeTimer = null;
 
@@ -81,7 +86,12 @@ Module.register("MMM-Seymour", {
   // MMM-pages may suspend modules that are not configured as fixed.
   suspend() {},
 
-  notificationReceived(notification, payload) {
+  notificationReceived(notification, payload, sender) {
+    if (notification === "DOM_OBJECTS_CREATED") {
+      this.bindTouchControls();
+      return;
+    }
+
     if (notification === "MAX_PAGES_CHANGED") {
       if (Number.isInteger(payload) && payload >= 0) this.maxPages = payload;
       return;
@@ -103,8 +113,8 @@ Module.register("MMM-Seymour", {
       return;
     }
 
-    if (notification === "ATTENTION_ON") this.attentionOn();
-    if (notification === "ATTENTION_OFF") this.attentionOff();
+    if (notification === "ATTENTION_ON") this.attentionOn(this.getAttentionSource(payload, sender));
+    if (notification === "ATTENTION_OFF") this.attentionOff(this.getAttentionSource(payload, sender));
   },
 
   handleAction(action) {
@@ -195,6 +205,7 @@ Module.register("MMM-Seymour", {
 
   refreshDom(animationSpeed) {
     this.updateDom(animationSpeed, () => {
+      this.bindTouchControls();
       if (!this.isOpen) return;
 
       const wrapper = document.getElementById(this.identifier);
@@ -206,6 +217,40 @@ Module.register("MMM-Seymour", {
           inline: "center"
         });
       }
+    });
+  },
+
+  bindTouchControls() {
+    if (this.config.enableTouch === false) return;
+
+    const wrapper = document.getElementById(this.identifier);
+    if (!wrapper || wrapper.dataset.seymourTouchBound === "true") return;
+
+    wrapper.dataset.seymourTouchBound = "true";
+    wrapper.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!target || typeof target.closest !== "function") return;
+
+      const launcher = target.closest("[data-seymour-action='open']");
+      if (launcher) {
+        this.openSelector();
+        return;
+      }
+
+      const dismiss = target.closest("[data-seymour-action='dismiss']");
+      if (dismiss) {
+        this.closeSelector();
+        return;
+      }
+
+      const channel = target.closest("[data-seymour-index]");
+      if (!channel || !this.isOpen) return;
+
+      const index = Number(channel.dataset.seymourIndex);
+      if (!Number.isInteger(index) || index < 0 || index >= this.config.channels.length) return;
+
+      this.activeIndex = index;
+      this.activateChannel();
     });
   },
 
@@ -252,13 +297,24 @@ Module.register("MMM-Seymour", {
     }, 0);
   },
 
-  attentionOn() {
-    this.attentionActive = true;
+  getAttentionSource(payload, sender) {
+    if (payload && typeof payload === "object" && typeof payload.source === "string") {
+      return payload.source;
+    }
+    if (sender && typeof sender.identifier === "string") return sender.identifier;
+    if (sender && typeof sender.name === "string") return sender.name;
+    return "legacy";
+  },
+
+  attentionOn(source = "legacy") {
+    this.attentionSources.add(source);
+    this.attentionActive = this.attentionSources.size > 0;
     this.applyWledState();
   },
 
-  attentionOff() {
-    this.attentionActive = false;
+  attentionOff(source = "legacy") {
+    this.attentionSources.delete(source);
+    this.attentionActive = this.attentionSources.size > 0;
     this.applyWledState();
   },
 

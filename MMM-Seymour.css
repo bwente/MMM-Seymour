@@ -13,6 +13,30 @@
   pointer-events: auto;
 }
 
+.seymour-launcher {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 10000;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.9);
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.seymour-launcher:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.95);
+  outline-offset: 3px;
+}
+
 .seymour-scrim {
   position: fixed;
   inset: 0;
@@ -90,8 +114,15 @@
 }
 
 .seymour-item {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   opacity: 0.55;
   text-align: center;
+  cursor: pointer;
+  touch-action: manipulation;
   transform: scale(0.85);
   transition: transform 0.2s ease, opacity 0.2s ease;
 }
@@ -109,6 +140,12 @@
 
 .seymour-item.active img {
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9);
+}
+
+.seymour-item:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.95);
+  outline-offset: 5px;
+  border-radius: 14px;
 }
 
 .seymour-label {

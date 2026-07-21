@@ -1,15 +1,27 @@
-<div class="seymour-root {% if isOpen %}is-open{% endif %}" aria-hidden="{{ 'false' if isOpen else 'true' }}">
-  <div class="seymour-scrim" aria-hidden="true"></div>
+<div class="seymour-root {% if isOpen %}is-open{% endif %}">
+  {% if enableTouch and showTouchLauncher and not isOpen %}
+    <button class="seymour-launcher" type="button" data-seymour-action="open" aria-label="Open channels">
+      <span aria-hidden="true">&#9776;</span>
+    </button>
+  {% endif %}
 
-  <div class="seymour-selector {{ selectorSize }}" role="dialog" aria-label="Page selector">
-    <div class="seymour-strip">
+  <div class="seymour-scrim" data-seymour-action="dismiss" aria-hidden="true"></div>
+
+  <div class="seymour-selector {{ selectorSize }}" role="dialog" aria-modal="true" aria-label="Channels">
+    <div class="seymour-strip" role="listbox" aria-label="Available channels">
       {% for channel in channels %}
-        <div class="seymour-item {% if loop.index0 == activeIndex %}active{% endif %}">
+        <button
+          class="seymour-item {% if loop.index0 == activeIndex %}active{% endif %}"
+          type="button"
+          role="option"
+          aria-selected="{{ 'true' if loop.index0 == activeIndex else 'false' }}"
+          data-seymour-index="{{ loop.index0 }}"
+        >
           <img src="{{ channel.thumbnailUrl }}" alt="{{ channel.label or 'Unnamed channel' }}">
           {% if showLabels %}
             <div class="seymour-label">{{ channel.label }}</div>
           {% endif %}
-        </div>
+        </button>
       {% endfor %}
     </div>
   </div>

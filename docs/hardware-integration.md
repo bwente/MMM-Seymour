@@ -22,10 +22,11 @@ repeat is ignored; arrow-key repeat is supported.
 - MMM-pages indexes are zero-based non-negative integers.
 - MMM-Seymour must be in MMM-pages' `fixed` list.
 - The selector tracks `NEW_PAGE`, `PAGE_NUMBER_IS`, and `MAX_PAGES_CHANGED`.
-- WLED defaults to presets `1` (selector open), `2` (idle), and `3`
-  (attention), all configurable under `config.wled`.
+- WLED is the selected appliance-light controller. It defaults to presets `1`
+  (selector open), `2` (idle), and `3` (attention), all configurable under
+  `config.wled`.
 - Attention remains active after the selector closes until `ATTENTION_OFF` is
-  received.
+  received from every module that raised it.
 - The historical default WLED hostname is `wled-seymour.local`.
 
 The authoritative draft contract and measurement worksheets live in

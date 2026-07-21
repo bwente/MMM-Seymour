@@ -9,7 +9,13 @@ global.Module = {
   }
 };
 global.Log = { info() {} };
-global.document = { addEventListener() {}, removeEventListener() {} };
+global.document = {
+  addEventListener() {},
+  removeEventListener() {},
+  getElementById() {
+    return null;
+  }
+};
 
 require("../MMM-Seymour.js");
 
@@ -22,6 +28,7 @@ function instance(channels = []) {
     currentPage: null,
     maxPages: null,
     attentionActive: false,
+    attentionSources: new Set(),
     dismissTimer: null,
     closeTimer: null,
     _closeTimer: null,
@@ -221,4 +228,95 @@ test("ignores shortcuts while the user is typing", () => {
   module.handleKeyEvent(event);
   assert.equal(module.isOpen, false);
   assert.equal(event.defaultPrevented, false);
+});
+
+test("touch launcher opens and scrim dismisses the selector", () => {
+  const module = instance([{ page: 0 }]);
+  let clickHandler;
+  const wrapper = {
+    dataset: {},
+    addEventListener(name, handler) {
+      assert.equal(name, "click");
+      clickHandler = handler;
+    }
+  };
+  const originalGetElementById = document.getElementById;
+  document.getElementById = () => wrapper;
+
+  try {
+    module.bindTouchControls();
+    clickHandler({
+      target: {
+        closest(selector) {
+          return selector === "[data-seymour-action='open']" ? {} : null;
+        }
+      }
+    });
+    assert.equal(module.isOpen, true);
+
+    clickHandler({
+      target: {
+        closest(selector) {
+          return selector === "[data-seymour-action='dismiss']" ? {} : null;
+        }
+      }
+    });
+    assert.equal(module.isOpen, false);
+  } finally {
+    document.getElementById = originalGetElementById;
+  }
+});
+
+test("touching a channel activates its page", () => {
+  const module = instance([{ page: 0 }, { page: 3 }]);
+  module.isOpen = true;
+  let clickHandler;
+  let notification;
+  module.sendNotification = (name, payload) => {
+    notification = { name, payload };
+  };
+  const wrapper = {
+    dataset: {},
+    addEventListener(_name, handler) {
+      clickHandler = handler;
+    }
+  };
+  const originalGetElementById = document.getElementById;
+  document.getElementById = () => wrapper;
+
+  try {
+    module.bindTouchControls();
+    clickHandler({
+      target: {
+        closest(selector) {
+          if (selector === "[data-seymour-index]") {
+            return { dataset: { seymourIndex: "1" } };
+          }
+          return null;
+        }
+      }
+    });
+  } finally {
+    if (module.closeTimer) clearTimeout(module.closeTimer);
+    document.getElementById = originalGetElementById;
+  }
+
+  assert.equal(module.activeIndex, 1);
+  assert.deepEqual(notification, { name: "PAGE_CHANGED", payload: 3 });
+});
+
+test("attention stays active until every sender clears", () => {
+  const module = instance([{ page: 0 }]);
+  const senderA = { identifier: "calendar" };
+  const senderB = { identifier: "message-center" };
+
+  module.notificationReceived("ATTENTION_ON", null, senderA);
+  module.notificationReceived("ATTENTION_ON", null, senderB);
+  module.notificationReceived("ATTENTION_OFF", null, senderA);
+
+  assert.equal(module.attentionActive, true);
+  assert.deepEqual([...module.attentionSources], ["message-center"]);
+
+  module.notificationReceived("ATTENTION_OFF", null, senderB);
+  assert.equal(module.attentionActive, false);
 });
