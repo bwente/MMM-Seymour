@@ -1,11 +1,11 @@
-<div class="seymour-root {% if isOpen %}is-open{% endif %}">
-  <div class="seymour-scrim"></div>
+<div class="seymour-root {% if isOpen %}is-open{% endif %}" aria-hidden="{{ 'false' if isOpen else 'true' }}">
+  <div class="seymour-scrim" aria-hidden="true"></div>
 
-  <div class="seymour-selector {{ selectorSize }}">
+  <div class="seymour-selector {{ selectorSize }}" role="dialog" aria-label="Page selector">
     <div class="seymour-strip">
       {% for channel in channels %}
-        <div class="seymour-item {% if loop.index0 === activeIndex %}active{% endif %}">
-          <img src="{{ channel.thumbnailUrl }}" alt="{{ channel.label }}">
+        <div class="seymour-item {% if loop.index0 == activeIndex %}active{% endif %}">
+          <img src="{{ channel.thumbnailUrl }}" alt="{{ channel.label or 'Unnamed channel' }}">
           {% if showLabels %}
             <div class="seymour-label">{{ channel.label }}</div>
           {% endif %}

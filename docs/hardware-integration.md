@@ -6,12 +6,12 @@ lives in the companion
 
 MMM-Seymour's hardware-facing contract is intentionally small:
 
-| Intended action | Required browser key event |
-| --- | --- |
-| Open or activate | `Enter` |
-| Previous channel | `ArrowLeft` |
-| Next channel | `ArrowRight` |
-| Cancel | `Escape` |
+| Intended action | Browser key | MagicMirror notification |
+| --- | --- | --- |
+| Open or activate | `Enter` | `SEYMOUR_PRESS` |
+| Previous channel | `ArrowLeft` | `SEYMOUR_ROTATE_LEFT` |
+| Next channel | `ArrowRight` | `SEYMOUR_ROTATE_RIGHT` |
+| Cancel | `Escape` | — |
 
 The physical interface may use USB, Bluetooth, GPIO-to-keyboard, or another
 controller, but it must emit these standard browser keyboard events. Enter key
@@ -22,9 +22,11 @@ repeat is ignored; arrow-key repeat is supported.
 - MMM-pages indexes are zero-based non-negative integers.
 - MMM-Seymour must be in MMM-pages' `fixed` list.
 - The selector tracks `NEW_PAGE`, `PAGE_NUMBER_IS`, and `MAX_PAGES_CHANGED`.
-- WLED presets `1` (selector open) and `2` (selector closed) are provisional
-  hardware requirements and are not implemented in this software baseline.
-- The historical WLED hostname is `wled-seymour.local`.
+- WLED defaults to presets `1` (selector open), `2` (idle), and `3`
+  (attention), all configurable under `config.wled`.
+- Attention remains active after the selector closes until `ATTENTION_OFF` is
+  received.
+- The historical default WLED hostname is `wled-seymour.local`.
 
 The authoritative draft contract and measurement worksheets live in
 Seymour-Hardware. Changes to controls, WLED behavior, channel numbering, or

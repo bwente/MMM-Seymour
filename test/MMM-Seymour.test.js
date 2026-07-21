@@ -16,11 +16,14 @@ require("../MMM-Seymour.js");
 function instance(channels = []) {
   return {
     ...definition,
-    config: { ...definition.defaults, channels },
+    config: { ...definition.defaults, channels, wled: { enabled: false } },
     activeIndex: 0,
     isOpen: false,
     currentPage: null,
     maxPages: null,
+    attentionActive: false,
+    dismissTimer: null,
+    closeTimer: null,
     _closeTimer: null,
     updateDom() {},
     sendNotification() {}
@@ -153,6 +156,61 @@ test("ignores modified shortcuts", () => {
 
   assert.equal(module.isOpen, false);
   assert.equal(event.defaultPrevented, false);
+});
+
+test("maps GPIO notifications to selector actions", () => {
+  const module = instance([{ page: 0 }, { page: 1 }]);
+
+  module.notificationReceived("SEYMOUR_PRESS");
+  assert.equal(module.isOpen, true);
+
+  module.notificationReceived("SEYMOUR_ROTATE_RIGHT");
+  assert.equal(module.activeIndex, 1);
+
+  module.notificationReceived("SEYMOUR_ROTATE_LEFT");
+  assert.equal(module.activeIndex, 0);
+});
+
+test("restores attention WLED state after closing the selector", () => {
+  const module = instance([{ page: 0 }]);
+  const requests = [];
+  const originalFetch = global.fetch;
+  global.fetch = (url) => {
+    requests.push(url);
+    return Promise.resolve();
+  };
+  module.config.wled = {
+    enabled: true,
+    baseUrl: "http://wled.test/",
+    presets: { open: 4, idle: 5, attention: 6 }
+  };
+
+  try {
+    module.notificationReceived("ATTENTION_ON");
+    module.openSelector();
+    module.closeSelector();
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.deepEqual(requests, [
+    "http://wled.test/win&PL=6",
+    "http://wled.test/win&PL=4",
+    "http://wled.test/win&PL=6"
+  ]);
+});
+
+test("auto-dismiss closes the selector", async () => {
+  const module = instance([{ page: 0 }]);
+  module.config.autoDismiss = true;
+  module.config.autoDismissDelay = 5;
+
+  module.openSelector();
+  assert.equal(module.isOpen, true);
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(module.isOpen, false);
+  assert.equal(module.dismissTimer, null);
 });
 
 test("ignores shortcuts while the user is typing", () => {

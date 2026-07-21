@@ -1,6 +1,6 @@
 # MMM-Seymour
 
-MMM-Seymour is a keyboard-driven visual page selector for
+MMM-Seymour is a keyboard- and GPIO-driven visual page selector for
 [MagicMirror²](https://magicmirror.builders/) installations that use
 [MMM-pages](https://github.com/edward-shen/MMM-pages). Press Enter to open the
 selector, use the left and right arrow keys to choose a channel, and press Enter
@@ -13,7 +13,7 @@ The module has no dedicated hardware dependencies. A typical installation uses:
 - a Raspberry Pi or other computer capable of running MagicMirror²;
 - a display supported by that computer; and
 - a USB, Bluetooth, GPIO-to-keyboard, or remote-control device that emits the
-  standard `Enter`, `Escape`, `ArrowLeft`, and `ArrowRight` browser key events.
+  standard browser key events or Seymour GPIO notifications.
 
 Bluetooth and wireless keyboards may introduce pairing or wake-from-sleep
 behavior outside this module. GPIO buttons need a separate service or module to
@@ -57,6 +57,13 @@ remains visible and available from every page:
     selectorSize: "medium",
     showLabels: true,
     enableKeyboard: true,
+    autoDismiss: true,
+    autoDismissDelay: 4000,
+    wled: {
+      enabled: true,
+      baseUrl: "http://wled-seymour.local",
+      presets: { open: 1, idle: 2, attention: 3 }
+    },
     channels: [
       { label: "Clock", page: 0, thumbnail: "clock.png" },
       { label: "Weather", page: 1, thumbnail: "weather.png" },
@@ -69,8 +76,12 @@ remains visible and available from every page:
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `selectorSize` | string | `"medium"` | Thumbnail preset: `small`, `medium`, or `large`. |
+| `theme` | string | `"default"` | Theme folder below `assets/themes`. |
 | `showLabels` | boolean | `true` | Show the channel label below each image. |
 | `enableKeyboard` | boolean | `true` | Register the global keyboard controls. |
+| `autoDismiss` | boolean | `false` | Close an open selector after inactivity. |
+| `autoDismissDelay` | number | `5000` | Auto-dismiss delay in milliseconds. |
+| `wled` | object | See example | Optional WLED endpoint and preset mapping. |
 | `channels` | array | `[]` | Ordered list of pages available in the selector. |
 
 Each channel accepts `label`, a non-negative integer MMM-pages `page`, and a
@@ -97,6 +108,10 @@ shared control and software contract.
 
 Keyboard shortcuts are ignored while typing in input, select, textarea, or
 content-editable elements.
+
+The equivalent MagicMirror notifications are `SEYMOUR_PRESS`,
+`SEYMOUR_ROTATE_LEFT`, and `SEYMOUR_ROTATE_RIGHT`. `ATTENTION_ON` and
+`ATTENTION_OFF` select or clear the configured WLED attention state.
 
 ## Development
 
