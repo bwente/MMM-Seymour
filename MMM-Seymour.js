@@ -209,15 +209,28 @@ Module.register("MMM-Seymour", {
       if (!this.isOpen) return;
 
       const wrapper = document.getElementById(this.identifier);
-      const activeItem = wrapper && wrapper.querySelector(".seymour-item.active");
-      if (activeItem) {
-        activeItem.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-          inline: "center"
-        });
-      }
+      this.centerActiveItem(wrapper);
     });
+  },
+
+  centerActiveItem(wrapper) {
+    if (!wrapper) return;
+
+    const selector = wrapper.querySelector(".seymour-selector");
+    const activeItem = wrapper.querySelector(".seymour-item.active");
+    if (!selector || !activeItem) return;
+
+    const targetLeft = Math.max(
+      0,
+      activeItem.offsetLeft - (selector.clientWidth - activeItem.offsetWidth) / 2
+    );
+
+    if (typeof selector.scrollTo === "function") {
+      selector.scrollTo({ left: targetLeft, behavior: "smooth" });
+      return;
+    }
+
+    activeItem.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   },
 
   bindTouchControls() {

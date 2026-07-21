@@ -106,7 +106,9 @@
 
 .seymour-strip {
   display: flex;
-  min-width: max-content;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
   gap: 24px;
   align-items: center;
   justify-content: center;

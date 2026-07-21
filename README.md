@@ -114,6 +114,9 @@ Touching the launcher opens the same selector used by the encoder. Touch a
 channel to activate it immediately, or touch the darkened area outside the
 selector to close it without changing pages.
 
+Encoder navigation keeps the active channel centered as the strip grows beyond
+the available display width. The strip remains directly swipeable by touch.
+
 Keyboard shortcuts are ignored while typing in input, select, textarea, or
 content-editable elements.
 

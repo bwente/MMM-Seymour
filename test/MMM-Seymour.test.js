@@ -320,3 +320,26 @@ test("attention stays active until every sender clears", () => {
   module.notificationReceived("ATTENTION_OFF", null, senderB);
   assert.equal(module.attentionActive, false);
 });
+
+test("encoder selection is centered in an overflowing channel strip", () => {
+  const module = instance([{ page: 0 }]);
+  let scrollOptions;
+  const selector = {
+    clientWidth: 600,
+    scrollTo(options) {
+      scrollOptions = options;
+    }
+  };
+  const activeItem = { offsetLeft: 900, offsetWidth: 120 };
+  const wrapper = {
+    querySelector(selectorName) {
+      if (selectorName === ".seymour-selector") return selector;
+      if (selectorName === ".seymour-item.active") return activeItem;
+      return null;
+    }
+  };
+
+  module.centerActiveItem(wrapper);
+
+  assert.deepEqual(scrollOptions, { left: 660, behavior: "smooth" });
+});
