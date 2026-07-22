@@ -343,3 +343,53 @@ test("encoder selection is centered in an overflowing channel strip", () => {
 
   assert.deepEqual(scrollOptions, { left: 660, behavior: "smooth" });
 });
+
+test("centers the selected tile after MagicMirror finishes rendering the DOM", () => {
+  const module = instance([{ page: 0 }]);
+  module.isOpen = true;
+  let centeredWrapper;
+  const wrapper = {
+    dataset: {},
+    addEventListener() {}
+  };
+  const originalGetElementById = global.document.getElementById;
+  global.document.getElementById = () => wrapper;
+  module.centerActiveItem = (value) => { centeredWrapper = value; };
+
+  module.notificationReceived("MODULE_DOM_UPDATED");
+
+  global.document.getElementById = originalGetElementById;
+  assert.equal(centeredWrapper, wrapper);
+});
+
+test("focuses the timer page at warning time and only once", () => {
+  const module = instance([{ page: 0 }, { page: 7 }]);
+  module.config.timer = { page: 7, warningSeconds: 10 };
+  module.maxPages = 8;
+  module.currentPage = 0;
+  const notifications = [];
+  module.sendNotification = (name, payload) => notifications.push({ name, payload });
+
+  module.notificationReceived("KITCHEN_TIMER_TICK", { remainingSeconds: 10 });
+  module.notificationReceived("KITCHEN_TIMER_TICK", { remainingSeconds: 9 });
+
+  assert.deepEqual(notifications, [{ name: "PAGE_CHANGED", payload: 7 }]);
+});
+
+test("timer completion focuses its page and controls attention lifecycle", () => {
+  const module = instance([{ page: 0 }, { page: 7 }]);
+  module.config.timer = { page: 7, attentionOnFinish: true };
+  module.maxPages = 8;
+  module.currentPage = 0;
+  let page;
+  module.sendNotification = (name, payload) => {
+    if (name === "PAGE_CHANGED") page = payload;
+  };
+
+  module.notificationReceived("KITCHEN_TIMER_FINISHED", { remainingSeconds: 0 });
+  assert.equal(page, 7);
+  assert.equal(module.attentionSources.has("kitchen-timer"), true);
+
+  module.notificationReceived("KITCHEN_TIMER_DISMISSED");
+  assert.equal(module.attentionSources.has("kitchen-timer"), false);
+});

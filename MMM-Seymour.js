@@ -10,6 +10,13 @@ Module.register("MMM-Seymour", {
     showTouchLauncher: true,
     autoDismiss: false,
     autoDismissDelay: 5000,
+    timer: {
+      page: null,
+      warningSeconds: 10,
+      focusOnWarning: true,
+      focusOnFinish: true,
+      attentionOnFinish: true
+    },
     wled: {
       enabled: true,
       baseUrl: "http://wled-seymour.local",
@@ -60,6 +67,7 @@ Module.register("MMM-Seymour", {
     this.attentionSources = new Set();
     this.dismissTimer = null;
     this.closeTimer = null;
+    this.timerWarningFocused = false;
 
     if (this.config.enableKeyboard) {
       this._boundKeyHandler = (event) => this.handleKeyEvent(event);
@@ -92,6 +100,14 @@ Module.register("MMM-Seymour", {
       return;
     }
 
+    if (notification === "MODULE_DOM_UPDATED") {
+      this.bindTouchControls();
+      if (this.isOpen) {
+        this.centerActiveItem(document.getElementById(this.identifier));
+      }
+      return;
+    }
+
     if (notification === "MAX_PAGES_CHANGED") {
       if (Number.isInteger(payload) && payload >= 0) this.maxPages = payload;
       return;
@@ -110,6 +126,11 @@ Module.register("MMM-Seymour", {
 
     if (actions[notification]) {
       this.handleAction(actions[notification]);
+      return;
+    }
+
+    if (notification.startsWith("KITCHEN_TIMER_")) {
+      this.handleTimerNotification(notification, payload);
       return;
     }
 
@@ -204,13 +225,56 @@ Module.register("MMM-Seymour", {
   },
 
   refreshDom(animationSpeed) {
-    this.updateDom(animationSpeed, () => {
-      this.bindTouchControls();
-      if (!this.isOpen) return;
+    this.updateDom(animationSpeed);
+  },
 
-      const wrapper = document.getElementById(this.identifier);
-      this.centerActiveItem(wrapper);
-    });
+  handleTimerNotification(notification, payload = {}) {
+    const timerConfig = this.config.timer || {};
+
+    if (notification === "KITCHEN_TIMER_STARTED") {
+      this.timerWarningFocused = false;
+      this.attentionOff("kitchen-timer");
+      return;
+    }
+
+    if (notification === "KITCHEN_TIMER_TICK") {
+      const warningSeconds = Number(timerConfig.warningSeconds);
+      const remainingSeconds = Number(payload.remainingSeconds);
+      if (
+        timerConfig.focusOnWarning !== false &&
+        !this.timerWarningFocused &&
+        Number.isFinite(warningSeconds) &&
+        warningSeconds > 0 &&
+        Number.isFinite(remainingSeconds) &&
+        remainingSeconds > 0 &&
+        remainingSeconds <= warningSeconds
+      ) {
+        this.timerWarningFocused = true;
+        this.focusTimerPage();
+      }
+      return;
+    }
+
+    if (notification === "KITCHEN_TIMER_FINISHED") {
+      if (timerConfig.focusOnFinish !== false) this.focusTimerPage();
+      if (timerConfig.attentionOnFinish !== false) this.attentionOn("kitchen-timer");
+      return;
+    }
+
+    if (
+      notification === "KITCHEN_TIMER_RESET" ||
+      notification === "KITCHEN_TIMER_DISMISSED"
+    ) {
+      this.timerWarningFocused = false;
+      this.attentionOff("kitchen-timer");
+    }
+  },
+
+  focusTimerPage() {
+    const timerPage = Number(this.config.timer && this.config.timer.page);
+    if (!Number.isInteger(timerPage) || timerPage < 0 || timerPage === this.currentPage) return;
+    if (this.maxPages !== null && timerPage >= this.maxPages) return;
+    this.sendNotification("PAGE_CHANGED", timerPage);
   },
 
   centerActiveItem(wrapper) {
