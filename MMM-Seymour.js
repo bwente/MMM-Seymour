@@ -67,6 +67,7 @@ Module.register("MMM-Seymour", {
     this.attentionSources = new Set();
     this.dismissTimer = null;
     this.closeTimer = null;
+    this.timerFocusTimer = null;
     this.timerWarningFocused = false;
 
     if (this.config.enableKeyboard) {
@@ -88,6 +89,10 @@ Module.register("MMM-Seymour", {
     if (this.closeTimer) {
       clearTimeout(this.closeTimer);
       this.closeTimer = null;
+    }
+    if (this.timerFocusTimer) {
+      clearTimeout(this.timerFocusTimer);
+      this.timerFocusTimer = null;
     }
   },
 
@@ -273,8 +278,12 @@ Module.register("MMM-Seymour", {
   focusTimerPage() {
     const timerPage = Number(this.config.timer && this.config.timer.page);
     if (!Number.isInteger(timerPage) || timerPage < 0 || timerPage === this.currentPage) return;
-    if (this.maxPages !== null && timerPage >= this.maxPages) return;
-    this.sendNotification("PAGE_CHANGED", timerPage);
+    if (this.timerFocusTimer) clearTimeout(this.timerFocusTimer);
+    this.timerFocusTimer = setTimeout(() => {
+      this.timerFocusTimer = null;
+      Log.info(`[MMM-Seymour] Focusing timer page ${timerPage}`);
+      this.sendNotification("PAGE_CHANGED", timerPage);
+    }, 0);
   },
 
   centerActiveItem(wrapper) {

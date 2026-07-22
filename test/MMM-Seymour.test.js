@@ -362,7 +362,7 @@ test("centers the selected tile after MagicMirror finishes rendering the DOM", (
   assert.equal(centeredWrapper, wrapper);
 });
 
-test("focuses the timer page at warning time and only once", () => {
+test("focuses the timer page at warning time and only once", async () => {
   const module = instance([{ page: 0 }, { page: 7 }]);
   module.config.timer = { page: 7, warningSeconds: 10 };
   module.maxPages = 8;
@@ -372,11 +372,12 @@ test("focuses the timer page at warning time and only once", () => {
 
   module.notificationReceived("KITCHEN_TIMER_TICK", { remainingSeconds: 10 });
   module.notificationReceived("KITCHEN_TIMER_TICK", { remainingSeconds: 9 });
+  await new Promise((resolve) => setTimeout(resolve, 5));
 
   assert.deepEqual(notifications, [{ name: "PAGE_CHANGED", payload: 7 }]);
 });
 
-test("timer completion focuses its page and controls attention lifecycle", () => {
+test("timer completion focuses its page and controls attention lifecycle", async () => {
   const module = instance([{ page: 0 }, { page: 7 }]);
   module.config.timer = { page: 7, attentionOnFinish: true };
   module.maxPages = 8;
@@ -387,6 +388,7 @@ test("timer completion focuses its page and controls attention lifecycle", () =>
   };
 
   module.notificationReceived("KITCHEN_TIMER_FINISHED", { remainingSeconds: 0 });
+  await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(page, 7);
   assert.equal(module.attentionSources.has("kitchen-timer"), true);
 
