@@ -2,6 +2,15 @@
   pointer-events: none;
 }
 
+/*
+ * MMM-Remote-Control uses this full-screen element only as a visual color
+ * temperature filter. It must not intercept touchscreen input intended for
+ * Seymour or the active MagicMirror page.
+ */
+#remote-control-overlay-temp {
+  pointer-events: none;
+}
+
 .seymour-root {
   position: fixed;
   inset: 0;
@@ -35,6 +44,68 @@
 .seymour-launcher:focus-visible {
   outline: 3px solid rgba(255, 255, 255, 0.95);
   outline-offset: 3px;
+}
+
+.seymour-root.is-interacting .seymour-launcher {
+  border-color: rgba(125, 211, 252, 0.95);
+  box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.22);
+}
+
+.seymour-root.is-interacting::after {
+  content: "";
+  position: fixed;
+  inset: 10px;
+  z-index: 9997;
+  border: 3px solid rgba(125, 211, 252, 0.9);
+  border-radius: 22px;
+  box-shadow:
+    inset 0 0 22px rgba(56, 189, 248, 0.18),
+    0 0 18px rgba(56, 189, 248, 0.22);
+  pointer-events: none;
+}
+
+.seymour-interaction-status {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  color: #e0f2fe;
+  background: rgba(8, 47, 73, 0.94);
+  border: 2px solid rgba(125, 211, 252, 0.95);
+  border-radius: 999px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.seymour-interaction-dot {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  background: #7dd3fc;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #38bdf8;
+  animation: seymour-interaction-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes seymour-interaction-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
 .seymour-scrim {

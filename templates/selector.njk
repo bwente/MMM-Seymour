@@ -1,4 +1,10 @@
-<div class="seymour-root {% if isOpen %}is-open{% endif %}">
+<div class="seymour-root {% if isOpen %}is-open{% endif %} {% if interactionActive %}is-interacting{% endif %}">
+  {% if interactionActive %}
+    <div class="seymour-interaction-status" role="status" aria-live="polite">
+      <span class="seymour-interaction-dot" aria-hidden="true"></span>
+      <span>{{ interactionLabel }}</span>
+    </div>
+  {% endif %}
   {% if enableTouch and showTouchLauncher and not isOpen %}
     <button class="seymour-launcher" type="button" data-seymour-action="open" aria-label="Open channels">
       <span aria-hidden="true">&#9776;</span>

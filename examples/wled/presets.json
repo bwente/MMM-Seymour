@@ -1,0 +1,195 @@
+{
+  "0": {},
+  "1": {
+    "on": true,
+    "bri": 9,
+    "transition": 7,
+    "mainseg": 0,
+    "seg": [
+      {
+        "id": 0,
+        "start": 0,
+        "stop": 16,
+        "grp": 1,
+        "spc": 0,
+        "of": 0,
+        "on": true,
+        "frz": false,
+        "bri": 255,
+        "cct": 127,
+        "set": 0,
+        "n": "",
+        "col": [[81, 156, 100], [0, 0, 0], [0, 0, 0]],
+        "fx": 0,
+        "sx": 128,
+        "ix": 128,
+        "pal": 2,
+        "c1": 128,
+        "c2": 128,
+        "c3": 16,
+        "sel": true,
+        "rev": false,
+        "mi": false,
+        "o1": false,
+        "o2": false,
+        "o3": false,
+        "si": 0,
+        "m12": 0
+      }
+    ],
+    "n": "Selector Open"
+  },
+  "2": {
+    "win": "T=0",
+    "n": "Selector Closed"
+  },
+  "3": {
+    "on": true,
+    "bri": 255,
+    "transition": 7,
+    "mainseg": 0,
+    "seg": [
+      {
+        "id": 0,
+        "start": 0,
+        "stop": 16,
+        "grp": 1,
+        "spc": 0,
+        "of": 0,
+        "on": true,
+        "frz": false,
+        "bri": 255,
+        "cct": 127,
+        "set": 0,
+        "n": "",
+        "col": [[69, 16, 71], [0, 0, 0], [0, 0, 0]],
+        "fx": 2,
+        "sx": 119,
+        "ix": 128,
+        "pal": 2,
+        "c1": 128,
+        "c2": 128,
+        "c3": 16,
+        "sel": true,
+        "rev": false,
+        "mi": false,
+        "o1": false,
+        "o2": false,
+        "o3": false,
+        "si": 0,
+        "m12": 0
+      }
+    ],
+    "n": "Attention Pulse"
+  },
+  "4": {
+    "on": true,
+    "bri": 128,
+    "transition": 7,
+    "mainseg": 0,
+    "seg": [
+      {
+        "id": 0,
+        "start": 0,
+        "stop": 16,
+        "on": true,
+        "bri": 255,
+        "col": [[255, 112, 0], [0, 0, 0], [0, 0, 0]],
+        "fx": 2,
+        "sx": 80,
+        "ix": 96,
+        "pal": 0,
+        "sel": true
+      }
+    ],
+    "n": "Timer Warning"
+  },
+  "5": {
+    "on": true,
+    "bri": 255,
+    "transition": 0,
+    "mainseg": 0,
+    "seg": [
+      {
+        "id": 0,
+        "start": 0,
+        "stop": 16,
+        "on": true,
+        "bri": 255,
+        "col": [[255, 24, 0], [0, 0, 0], [0, 0, 0]],
+        "fx": 2,
+        "sx": 180,
+        "ix": 192,
+        "pal": 0,
+        "sel": true
+      }
+    ],
+    "n": "Timer Finished"
+  },
+  "6": {
+    "on": true,
+    "bri": 48,
+    "transition": 7,
+    "mainseg": 0,
+    "seg": [
+      {
+        "id": 0,
+        "start": 0,
+        "stop": 16,
+        "on": true,
+        "bri": 255,
+        "col": [[40, 120, 255], [0, 0, 0], [0, 0, 0]],
+        "fx": 0,
+        "sx": 128,
+        "ix": 128,
+        "pal": 0,
+        "sel": true
+      }
+    ],
+    "n": "Control Mode"
+  },
+  "7": {
+    "on": true,
+    "bri": 80,
+    "transition": 7,
+    "mainseg": 0,
+    "seg": [
+      {
+        "id": 0,
+        "start": 0,
+        "stop": 16,
+        "on": true,
+        "bri": 255,
+        "col": [[0, 160, 255], [88, 24, 180], [0, 0, 0]],
+        "fx": 2,
+        "sx": 105,
+        "ix": 96,
+        "pal": 0,
+        "sel": true
+      }
+    ],
+    "n": "Music Activity"
+  },
+  "8": {
+    "on": true,
+    "bri": 255,
+    "transition": 0,
+    "mainseg": 0,
+    "seg": [
+      {
+        "id": 0,
+        "start": 0,
+        "stop": 16,
+        "on": true,
+        "bri": 255,
+        "col": [[255, 0, 0], [0, 0, 0], [0, 0, 0]],
+        "fx": 2,
+        "sx": 220,
+        "ix": 255,
+        "pal": 0,
+        "sel": true
+      }
+    ],
+    "n": "Connection Error"
+  }
+}

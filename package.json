@@ -1,8 +1,22 @@
 {
   "name": "mmm-seymour",
   "version": "0.1.0",
-  "description": "Keyboard-driven page selector for MagicMirror² and MMM-pages",
+  "description": "An Audrey-inspired ambient channel interface for MagicMirror² and MMM-pages",
   "private": true,
+  "author": "Brian Wente",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bwente/MMM-Seymour.git"
+  },
+  "keywords": [
+    "magicmirror",
+    "magicmirror2",
+    "raspberry-pi",
+    "touchscreen",
+    "rotary-encoder",
+    "wled"
+  ],
   "scripts": {
     "test": "node --test"
   },
