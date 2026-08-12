@@ -54,6 +54,49 @@ while keeping navigation brief and focused.
 running on the physical Seymour appliance, but installation and compatibility
 testing outside that reference system are still in progress.
 
+## Quick Start
+
+Already have MagicMirror running? This temporary demo adds Seymour and
+MMM-pages, then launches four channels built entirely from MagicMirror's
+bundled Clock, Calendar, Weather, and News Feed modules. No GPIO, WLED, Home
+Assistant, or other services are required.
+
+From the MagicMirror directory:
+
+```sh
+cd modules
+git clone https://github.com/edward-shen/MMM-pages.git
+git clone https://github.com/bwente/MMM-Seymour.git
+
+cp ../config/config.js ../config/config.js.before-seymour
+cp MMM-Seymour/examples/stock-modules.config.js ../config/config.js
+
+cd ..
+npm start
+```
+
+The example uses public New York City weather and US holiday data so it can run
+immediately. Edit `latitude` and `longitude` near the top of `config/config.js`
+when you are ready to use your location.
+
+Try the interface with any keyboard:
+
+- press **Enter** to open the channel selector;
+- use **Left Arrow** and **Right Arrow** to choose a channel;
+- press **Enter** again to switch; or
+- tap the round menu button and channel tiles on a touchscreen.
+
+To return to the configuration you had before the demo:
+
+```sh
+cp config/config.js.before-seymour config/config.js
+```
+
+Restart MagicMirror after changing configurations. When you are ready to add
+the physical encoder and MessageCenter, use the
+[`examples/showcase.config.js`](examples/showcase.config.js) configuration and
+install the optional modules identified in its header.
+
 ### A channel built from stock modules
 
 The Weather channel below combines two instances of MagicMirror's bundled
