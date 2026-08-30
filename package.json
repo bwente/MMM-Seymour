@@ -18,8 +18,11 @@
     "wled"
   ],
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "check": "npm test"
   },
+  "homepage": "https://github.com/bwente/MMM-Seymour#readme",
+  "bugs": { "url": "https://github.com/bwente/MMM-Seymour/issues" },
   "engines": {
     "node": ">=18"
   }

@@ -1,20 +1,65 @@
-<div class="seymour-root {% if isOpen %}is-open{% endif %} {% if interactionActive %}is-interacting{% endif %}">
+<div class="seymour-root {% if isOpen %}is-open{% endif %} {% if interactionActive %}is-interacting{% endif %} {% if systemOpen %}is-system-open{% endif %}">
   {% if interactionActive %}
     <div class="seymour-interaction-status" role="status" aria-live="polite">
       <span class="seymour-interaction-dot" aria-hidden="true"></span>
       <span>{{ interactionLabel }}</span>
     </div>
   {% endif %}
-  {% if enableTouch and showTouchLauncher and not isOpen %}
-    <button class="seymour-launcher" type="button" data-seymour-action="open" aria-label="Open channels">
+  {% if enableTouch and showTouchLauncher and not isOpen and not systemOpen %}
+    <button class="seymour-launcher" type="button" data-seymour-action="open" aria-label="{{ labels.openChannels }}">
       <span aria-hidden="true">&#9776;</span>
     </button>
   {% endif %}
 
   <div class="seymour-scrim" data-seymour-action="dismiss" aria-hidden="true"></div>
 
-  <div class="seymour-selector {{ selectorSize }}" role="dialog" aria-modal="true" aria-label="Channels">
-    <div class="seymour-strip" role="listbox" aria-label="Available channels">
+  {% if systemOpen %}
+    <div class="seymour-system-scrim" data-seymour-action="system-dismiss" aria-hidden="true"></div>
+    <section class="seymour-system-panel" role="dialog" aria-modal="true" aria-label="{{ systemTitle }}">
+      <h2>{{ systemTitle }}</h2>
+      {% if systemInfo %}
+        <dl class="seymour-system-info" aria-label="{{ labels.systemInformation }}">
+          {% if systemInfo.loading %}
+            <div class="seymour-system-info-loading"><dt>{{ labels.status }}</dt><dd>{{ labels.loading }}</dd></div>
+          {% else %}
+            <div><dt>{{ labels.host }}</dt><dd>{{ systemInfo.hostname }}</dd></div>
+            <div class="seymour-system-info-network"><dt>{{ labels.network }}</dt><dd>{{ systemInfo.primaryAddress }}</dd></div>
+            <div><dt>{{ labels.uptime }}</dt><dd>{{ systemInfo.uptime }}</dd></div>
+            <div><dt>{{ labels.memory }}</dt><dd>{{ systemInfo.memory }}</dd></div>
+            <div><dt>{{ labels.cpuLoad }}</dt><dd>{{ systemInfo.cpuLoad }}</dd></div>
+            <div><dt>{{ labels.temperature }}</dt><dd>{{ systemInfo.temperature }}</dd></div>
+            <div class="seymour-system-info-versions">
+              <dt>{{ labels.software }}</dt>
+              <dd>
+                {% if systemInfo.magicMirrorVersion %}MagicMirror {{ systemInfo.magicMirrorVersion }}{% endif %}
+                {% if systemInfo.nodeVersion %}<span>Node.js {{ systemInfo.nodeVersion }}</span>{% endif %}
+              </dd>
+            </div>
+            {% if systemInfo.secondaryAddresses %}
+              <div class="seymour-system-info-secondary"><dt>IPv6</dt><dd>{{ systemInfo.secondaryAddresses }}</dd></div>
+            {% endif %}
+          {% endif %}
+        </dl>
+      {% endif %}
+      <div class="seymour-system-actions" role="listbox" aria-label="{{ labels.systemActions }}">
+        {% for action in systemActions %}
+          <button
+            class="seymour-system-action {% if action.active %}active{% endif %} {% if action.confirming %}confirming{% endif %}"
+            type="button"
+            role="option"
+            aria-selected="{{ 'true' if action.active else 'false' }}"
+            data-seymour-system-index="{{ loop.index0 }}"
+          >
+            {% if action.confirming %}{{ labels.confirm }} {{ action.label }}{% else %}{{ action.label }}{% endif %}
+          </button>
+        {% endfor %}
+      </div>
+      <p class="seymour-system-hint">{{ labels.systemHint }}</p>
+    </section>
+  {% endif %}
+
+  <div class="seymour-selector {{ selectorSize }}" role="dialog" aria-modal="true" aria-label="{{ labels.channels }}">
+    <div class="seymour-strip" role="listbox" aria-label="{{ labels.availableChannels }}">
       {% for channel in channels %}
         <button
           class="seymour-item {% if loop.index0 == activeIndex %}active{% endif %}"
@@ -23,7 +68,7 @@
           aria-selected="{{ 'true' if loop.index0 == activeIndex else 'false' }}"
           data-seymour-index="{{ loop.index0 }}"
         >
-          <img src="{{ channel.thumbnailUrl }}" alt="{{ channel.label or 'Unnamed channel' }}">
+          <img src="{{ channel.thumbnailUrl }}" alt="{{ channel.label or labels.unnamedChannel }}">
           {% if showLabels %}
             <div class="seymour-label">{{ channel.label }}</div>
           {% endif %}

@@ -34,11 +34,15 @@ repeat is ignored; arrow-key repeat is supported.
 - WLED is an optional appliance-light controller and is disabled by default.
   When enabled, its default presets are `1` (selector open), `2` (idle), and
   `3` (attention), all configurable under `config.wled`. Optional mappings add
-  timer warning, timer completion, and channel control mode without placing
-  WLED details in the participating modules.
-- WLED state priority is selector, timer finished, attention, timer warning,
-  control mode, then idle. Missing optional mappings fall back to the original
-  attention or idle states.
+  timer warning, timer completion, FocusBreak phases, and channel control mode
+  without placing WLED details in the participating modules.
+- MMM-FocusBreak remains optional and publishes only semantic MagicMirror
+  notifications. Seymour maps active focus and break to idle by default, and a
+  completed break to attention, preferring preset reuse over new effects.
+- WLED state priority is selector, System overlay, timer finished, completed
+  break, attention, timer warning, active break, control mode, active focus,
+  then idle. Missing optional mappings fall back to the original attention or
+  idle states.
 - Attention remains active after the selector closes until `ATTENTION_OFF` is
   received from every module that raised it.
 - The historical default WLED hostname is `wled-seymour.local`.

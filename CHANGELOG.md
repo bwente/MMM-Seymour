@@ -19,6 +19,14 @@ and this project intends to use [Semantic Versioning](https://semver.org/).
 - Default and dark channel-art themes with placeholder artwork.
 - Stock-module configuration, WLED presets, hardware contract, and module guide.
 - Dependency-free Node.js unit test suite.
+- Encoder-accessible System overlay with configurable semantic actions,
+  confirmation for destructive commands, and automatic dismissal.
+- Read-only System diagnostics for hostname, IP addresses, uptime, memory,
+  temperature, and runtime versions.
+- Optional MMM-FocusBreak semantic WLED states with deterministic priority,
+  heartbeat recovery, and reuse-first idle and attention fallbacks.
+- Optional local idle return with a configurable home page, delay, and
+  per-channel opt-out.
 
 ### Changed
 

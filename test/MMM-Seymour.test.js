@@ -2,6 +2,14 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const test = require("node:test");
 const vm = require("node:vm");
+const translations = require("../translations/en.json");
+
+function translate(key, variables = {}) {
+  return Object.entries(variables).reduce(
+    (value, [name, replacement]) => value.replaceAll(`{${name}}`, String(replacement)),
+    translations[key] || key
+  );
+}
 
 let definition;
 global.Module = {
@@ -46,18 +54,28 @@ function instance(channels = []) {
     attentionActive: false,
     attentionSources: new Set(),
     timerWledState: null,
+    focusBreakWledState: null,
     dismissTimer: null,
+    idleReturnTimer: null,
     closeTimer: null,
     _closeTimer: null,
     interactionActive: false,
     interactionPage: null,
     interactionTimer: null,
     pendingPressTimer: null,
+    pressCount: 0,
+    systemOpen: false,
+    systemIndex: 0,
+    systemConfirmAction: null,
+    systemDismissTimer: null,
+    systemInfo: null,
     domFocusIndex: -1,
     domFocusedElement: null,
     domFocusObserver: null,
     wledHeartbeatTimer: null,
+    translate,
     updateDom() {},
+    sendSocketNotification() {},
     sendNotification() {}
   };
 }
@@ -81,6 +99,14 @@ test("does not open an empty selector", () => {
   const module = instance();
   module.handleKeyEvent(keyEvent("Enter"));
   assert.equal(module.isOpen, false);
+});
+
+test("provides the complete English translation entry point", () => {
+  assert.equal(definition.getTranslations().en, "translations/en.json");
+  for (const key of ["OPEN_CHANNELS", "SYSTEM_INFORMATION", "CHANNELS", "UNAVAILABLE"]) {
+    assert.equal(typeof translations[key], "string");
+    assert.notEqual(translations[key], "");
+  }
 });
 
 test("keeps WLED opt-in for a standard MagicMirror installation", () => {
@@ -215,7 +241,8 @@ test("start requests the current page", () => {
     "previous",
     "next",
     "activate",
-    "select"
+    "select",
+    "system"
   ]);
 });
 
@@ -241,6 +268,112 @@ test("handles explicit MMM-Remote-Control selector actions", () => {
 
   module.notificationReceived("SEYMOUR_CLOSE");
   assert.equal(module.isOpen, false);
+});
+
+test("triple press opens and closes the System overlay without changing channels", async () => {
+  const module = instance([{ page: 0 }]);
+  module.currentPage = 0;
+  module.config.systemPanel = { ...definition.defaults.systemPanel, triplePressDelay: 5, autoDismissDelay: 0 };
+  const notifications = [];
+  module.sendNotification = (name, payload) => notifications.push({ name, payload });
+
+  module.handleAction("PRESS");
+  module.handleAction("PRESS");
+  module.handleAction("PRESS");
+
+  assert.equal(module.systemOpen, true);
+  assert.equal(module.currentPage, 0);
+  assert.equal(module.isOpen, false);
+  assert.equal(notifications.at(-1).name, "SEYMOUR_SYSTEM_OPENED");
+
+  module.handleAction("PRESS");
+  module.handleAction("PRESS");
+  module.handleAction("PRESS");
+
+  assert.equal(module.systemOpen, false);
+  assert.equal(notifications.at(-1).name, "SEYMOUR_SYSTEM_CLOSED");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(notifications.some(({ name }) => name.startsWith("SEYMOUR_SYSTEM_VOLUME")), false);
+});
+
+test("System rotation wraps and cancels a pending confirmation", () => {
+  const module = instance([{ page: 0 }]);
+  module.config.systemPanel = { ...definition.defaults.systemPanel, autoDismissDelay: 0 };
+  module.systemOpen = true;
+  module.systemIndex = 0;
+  module.systemConfirmAction = "restart";
+
+  module.handleAction("ROTATE_LEFT");
+  assert.equal(module.systemIndex, definition.defaults.systemPanel.actions.length - 1);
+  assert.equal(module.systemConfirmAction, null);
+
+  module.handleAction("ROTATE_RIGHT");
+  assert.equal(module.systemIndex, 0);
+});
+
+test("destructive System actions require confirmation and publish semantic notifications", () => {
+  const module = instance([{ page: 0 }]);
+  const notifications = [];
+  module.systemOpen = true;
+  module.config.systemPanel = { ...definition.defaults.systemPanel, autoDismissDelay: 0 };
+  module.sendNotification = (name, payload) => notifications.push({ name, payload });
+  const rebootIndex = module.getSystemActions().findIndex(({ id }) => id === "reboot");
+
+  module.activateSystemAction(rebootIndex);
+  assert.equal(module.systemOpen, true);
+  assert.equal(module.systemConfirmAction, "reboot");
+  assert.equal(notifications.length, 0);
+
+  module.activateSystemAction(rebootIndex);
+  assert.equal(module.systemOpen, false);
+  assert.deepEqual(notifications.map(({ name }) => name), [
+    "SEYMOUR_SYSTEM_REBOOT",
+    "SEYMOUR_SYSTEM_ACTION",
+    "SEYMOUR_SYSTEM_CLOSED"
+  ]);
+});
+
+test("System overlay auto-closes after inactivity", async () => {
+  const module = instance([{ page: 0 }]);
+  module.config.systemPanel = { ...definition.defaults.systemPanel, autoDismissDelay: 5 };
+
+  module.openSystemPanel();
+  assert.equal(module.systemOpen, true);
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(module.systemOpen, false);
+});
+
+test("opening System requests fresh diagnostics and formats the response", () => {
+  const module = instance([{ page: 0 }]);
+  const socketNotifications = [];
+  module.config.systemPanel = { ...definition.defaults.systemPanel, autoDismissDelay: 0 };
+  module.sendSocketNotification = (name) => socketNotifications.push(name);
+
+  module.openSystemPanel();
+  module.socketNotificationReceived("SEYMOUR_SYSTEM_INFO", {
+    hostname: "seymour",
+    addresses: ["192.0.2.10", "2001:db8::10"],
+    uptimeSeconds: 93784,
+    memory: { usedBytes: 805306368, totalBytes: 2147483648 },
+    cpuLoadPercent: 18.4,
+    temperatureC: 51.6,
+    magicMirrorVersion: "2.37.0",
+    nodeVersion: "v22.21.1"
+  });
+
+  assert.deepEqual(socketNotifications, ["SEYMOUR_GET_SYSTEM_INFO"]);
+  assert.deepEqual(module.getSystemInfoTemplateData(), {
+    loading: false,
+    hostname: "seymour",
+    primaryAddress: "192.0.2.10",
+    secondaryAddresses: "2001:db8::10",
+    uptime: "1d 2h",
+    memory: "0.8 / 2.0 GB",
+    cpuLoad: "18%",
+    temperature: "52°C",
+    magicMirrorVersion: "2.37.0",
+    nodeVersion: "v22.21.1"
+  });
 });
 
 test("selects a configured page from MMM-Remote-Control", () => {
@@ -374,10 +507,12 @@ test("ignores modified shortcuts", () => {
   assert.equal(event.defaultPrevented, false);
 });
 
-test("maps GPIO notifications to selector actions", () => {
+test("maps GPIO notifications to selector actions", async () => {
   const module = instance([{ page: 0 }, { page: 1 }]);
+  module.config.systemPanel = { ...definition.defaults.systemPanel, triplePressDelay: 5 };
 
   module.notificationReceived("SEYMOUR_PRESS");
+  await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal(module.isOpen, true);
 
   module.notificationReceived("SEYMOUR_ROTATE_RIGHT");
@@ -400,6 +535,7 @@ test("single press retains selector behavior on an interactive channel", async (
   ]);
   module.currentPage = 2;
   module.config.interaction = { enabled: true, doublePressDelay: 5, timeout: 0 };
+  module.config.systemPanel = { ...definition.defaults.systemPanel, triplePressDelay: 5 };
 
   module.handleAction("PRESS");
   assert.equal(module.isOpen, false);
@@ -426,6 +562,7 @@ test("double press enters generic channel interaction and routes deliberate cont
   ]);
   module.currentPage = 2;
   module.config.interaction = { enabled: true, doublePressDelay: 5, timeout: 0 };
+  module.config.systemPanel = { ...definition.defaults.systemPanel, triplePressDelay: 5 };
   const notifications = [];
   module.sendNotification = (name) => notifications.push(name);
 
@@ -434,6 +571,7 @@ test("double press enters generic channel interaction and routes deliberate cont
 
   module.handleAction("PRESS");
   module.handleAction("PRESS");
+  await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal(module.interactionActive, true);
   assert.deepEqual(notifications, ["MUSIC_VOLUME_UP", "MUSIC_CONTROL_ENTER"]);
 
@@ -450,6 +588,7 @@ test("double press enters generic channel interaction and routes deliberate cont
 
   module.handleAction("PRESS");
   module.handleAction("PRESS");
+  await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal(module.interactionActive, false);
   assert.equal(notifications.at(-1), "MUSIC_CONTROL_BACK");
 });
@@ -534,6 +673,7 @@ test("generic focus mode cycles and activates visible module controls", async ()
   ]);
   module.currentPage = 7;
   module.config.interaction = { enabled: true, doublePressDelay: 5, timeout: 0 };
+  module.config.systemPanel = { ...definition.defaults.systemPanel, triplePressDelay: 5 };
   const events = [];
   const control = (name) => ({
     disabled: false,
@@ -555,6 +695,7 @@ test("generic focus mode cycles and activates visible module controls", async ()
   try {
     module.handleAction("PRESS");
     module.handleAction("PRESS");
+    await new Promise((resolve) => setTimeout(resolve, 15));
     assert.equal(module.interactionActive, true);
     assert.equal(module.domFocusedElement, controls[0]);
 
@@ -567,6 +708,7 @@ test("generic focus mode cycles and activates visible module controls", async ()
 
     module.handleAction("PRESS");
     module.handleAction("PRESS");
+    await new Promise((resolve) => setTimeout(resolve, 15));
     assert.equal(module.interactionActive, false);
     assert.equal(events.at(-1), "blur:two");
   } finally {
@@ -713,6 +855,204 @@ test("falls back to core presets when optional WLED mappings are absent", () => 
   ]);
 });
 
+test("uses the optional System WLED preset while the overlay is open", () => {
+  const module = instance([{ page: 0 }]);
+  const requests = [];
+  const originalFetch = global.fetch;
+  global.fetch = (url) => {
+    requests.push(url);
+    return Promise.resolve({ ok: true });
+  };
+  module.config.systemPanel = { ...definition.defaults.systemPanel, autoDismissDelay: 0 };
+  module.config.wled = {
+    enabled: true,
+    baseUrl: "http://wled.test",
+    presets: { open: 1, idle: 2, attention: 3, system: 7 }
+  };
+
+  try {
+    module.openSystemPanel();
+    module.closeSystemPanel();
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.deepEqual(requests, [
+    "http://wled.test/win&PL=7",
+    "http://wled.test/win&PL=2"
+  ]);
+});
+
+test("maps FocusBreak lifecycle notifications without depending on progress", () => {
+  const module = instance([{ page: 0 }]);
+  const requests = [];
+  const originalFetch = global.fetch;
+  global.fetch = (url) => {
+    requests.push(url);
+    return Promise.resolve({ ok: true });
+  };
+  module.config.wled = {
+    enabled: true,
+    baseUrl: "http://wled.test",
+    presets: { open: 1, idle: 2, attention: 3, focusing: 7, breakActive: 8, breakFinished: 9 }
+  };
+
+  try {
+    module.notificationReceived("FOCUS_STARTED");
+    module.notificationReceived("FOCUS_PAUSED");
+    module.notificationReceived("FOCUS_BREAK_PROGRESS", { progress: 0.4 });
+    module.notificationReceived("FOCUS_COMPLETED");
+    module.notificationReceived("BREAK_STARTED");
+    module.notificationReceived("BREAK_PAUSED");
+    module.notificationReceived("BREAK_COMPLETED", { reason: "skipped" });
+    module.notificationReceived("FOCUS_STARTED");
+    module.notificationReceived("FOCUS_BREAK_READY");
+    module.notificationReceived("BREAK_STARTED");
+    module.notificationReceived("FOCUS_BREAK_RESET");
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.deepEqual(requests, [
+    "http://wled.test/win&PL=7",
+    "http://wled.test/win&PL=8",
+    "http://wled.test/win&PL=9",
+    "http://wled.test/win&PL=7",
+    "http://wled.test/win&PL=2",
+    "http://wled.test/win&PL=8",
+    "http://wled.test/win&PL=2"
+  ]);
+  assert.equal(module.focusBreakWledState, null);
+});
+
+test("selector temporarily overrides and restores every FocusBreak state", () => {
+  const module = instance([{ page: 0 }]);
+  const requests = [];
+  const originalFetch = global.fetch;
+  global.fetch = (url) => {
+    requests.push(url);
+    return Promise.resolve({ ok: true });
+  };
+  module.config.wled = {
+    enabled: true,
+    baseUrl: "http://wled.test",
+    presets: { open: 1, idle: 2, attention: 3, focusing: 7, breakActive: 8, breakFinished: 9 }
+  };
+
+  try {
+    ["focusing", "breakActive", "breakFinished"].forEach((state) => {
+      module.focusBreakWledState = state;
+      module.openSelector();
+      module.closeSelector();
+    });
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.deepEqual(requests, [
+    "http://wled.test/win&PL=1", "http://wled.test/win&PL=7",
+    "http://wled.test/win&PL=1", "http://wled.test/win&PL=8",
+    "http://wled.test/win&PL=1", "http://wled.test/win&PL=9"
+  ]);
+});
+
+test("FocusBreak participates in deterministic WLED priority without clearing attention", () => {
+  const module = instance([{ page: 0 }]);
+  const requests = [];
+  const originalFetch = global.fetch;
+  global.fetch = (url) => {
+    requests.push(url);
+    return Promise.resolve({ ok: true });
+  };
+  module.config.wled = {
+    enabled: true,
+    baseUrl: "http://wled.test",
+    presets: {
+      open: 1, idle: 2, attention: 3, timerWarning: 4, timerFinished: 5,
+      control: 6, focusing: 7, breakActive: 8, breakFinished: 9
+    }
+  };
+
+  try {
+    module.focusBreakWledState = "focusing";
+    module.interactionActive = true;
+    module.applyWledState();
+    module.focusBreakWledState = "breakActive";
+    module.applyWledState();
+    module.timerWledState = "timerWarning";
+    module.applyWledState();
+    module.attentionOn("message-center");
+    module.focusBreakWledState = "breakFinished";
+    module.applyWledState();
+    module.timerWledState = "timerFinished";
+    module.applyWledState();
+    module.timerWledState = null;
+    module.notificationReceived("FOCUS_BREAK_RESET");
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.deepEqual(requests, [
+    "http://wled.test/win&PL=6",
+    "http://wled.test/win&PL=8",
+    "http://wled.test/win&PL=4",
+    "http://wled.test/win&PL=3",
+    "http://wled.test/win&PL=9",
+    "http://wled.test/win&PL=5",
+    "http://wled.test/win&PL=3"
+  ]);
+  assert.equal(module.attentionSources.has("message-center"), true);
+});
+
+test("FocusBreak mappings reuse idle and attention when optional presets are absent", () => {
+  const module = instance([{ page: 0 }]);
+  const requests = [];
+  const originalFetch = global.fetch;
+  global.fetch = (url) => {
+    requests.push(url);
+    return Promise.resolve({ ok: true });
+  };
+  module.config.wled = {
+    enabled: true,
+    baseUrl: "http://wled.test",
+    presets: { open: 1, idle: 2, attention: 3 }
+  };
+
+  try {
+    module.notificationReceived("FOCUS_STARTED");
+    module.notificationReceived("BREAK_STARTED");
+    module.notificationReceived("BREAK_COMPLETED");
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.deepEqual(requests, [
+    "http://wled.test/win&PL=2",
+    "http://wled.test/win&PL=2",
+    "http://wled.test/win&PL=3"
+  ]);
+});
+
+test("WLED-disabled FocusBreak handling remains local and safe", () => {
+  const module = instance([{ page: 0 }]);
+  let requests = 0;
+  const originalFetch = global.fetch;
+  global.fetch = () => {
+    requests += 1;
+    return Promise.resolve({ ok: true });
+  };
+  module.config.wled = { enabled: false };
+
+  try {
+    module.notificationReceived("BREAK_COMPLETED");
+  } finally {
+    global.fetch = originalFetch;
+  }
+
+  assert.equal(module.focusBreakWledState, "breakFinished");
+  assert.equal(requests, 0);
+});
+
 test("WLED heartbeat reapplies state and can be stopped", () => {
   const module = instance([{ page: 0 }]);
   const requests = [];
@@ -752,6 +1092,44 @@ test("WLED heartbeat reapplies state and can be stopped", () => {
   assert.equal(module.wledHeartbeatTimer, null);
 });
 
+test("WLED heartbeat reapplies the active FocusBreak state", () => {
+  const module = instance([{ page: 0 }]);
+  const requests = [];
+  const originalFetch = global.fetch;
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  global.fetch = (url) => {
+    requests.push(url);
+    return Promise.resolve({ ok: true });
+  };
+  global.setInterval = (callback) => {
+    callback();
+    return 456;
+  };
+  global.clearInterval = () => {};
+  module.focusBreakWledState = "breakActive";
+  module.config.wled = {
+    enabled: true,
+    baseUrl: "http://wled.test",
+    heartbeatInterval: 5,
+    presets: { open: 1, idle: 2, attention: 3, breakActive: 8 }
+  };
+
+  try {
+    module.startWledHeartbeat();
+    module.stopWledHeartbeat();
+  } finally {
+    global.fetch = originalFetch;
+    global.setInterval = originalSetInterval;
+    global.clearInterval = originalClearInterval;
+  }
+
+  assert.deepEqual(requests, [
+    "http://wled.test/win&PL=8",
+    "http://wled.test/win&PL=8"
+  ]);
+});
+
 test("zero WLED heartbeat interval keeps event-driven updates only", () => {
   const module = instance([{ page: 0 }]);
   const originalFetch = global.fetch;
@@ -787,6 +1165,94 @@ test("auto-dismiss closes the selector", async () => {
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(module.isOpen, false);
   assert.equal(module.dismissTimer, null);
+});
+
+test("keeps idle return opt-in and local by default", () => {
+  assert.deepEqual(definition.defaults.idleReturn, {
+    enabled: false,
+    page: 0,
+    delay: 300000
+  });
+});
+
+test("returns to the configured page after user inactivity", async () => {
+  const module = instance([{ page: 0 }, { page: 3 }]);
+  module.currentPage = 3;
+  module.config.idleReturn = { enabled: true, page: 0, delay: 5 };
+  const notifications = [];
+  module.sendNotification = (name, payload) => notifications.push({ name, payload });
+
+  module.startIdleReturnTimer();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(module.currentPage, 0);
+  assert.equal(module.activeIndex, 0);
+  assert.deepEqual(notifications, [
+    { name: "PAGE_CHANGED", payload: 0 },
+    { name: "SEYMOUR_IDLE_RETURNED", payload: { from: 3, page: 0 } }
+  ]);
+  assert.equal(module.idleReturnTimer, null);
+});
+
+test("does not leave a channel that opts out of idle return", async () => {
+  const module = instance([{ page: 0 }, { page: 3, idleReturn: false }]);
+  module.currentPage = 3;
+  module.config.idleReturn = { enabled: true, page: 0, delay: 5 };
+  const notifications = [];
+  module.sendNotification = (name, payload) => notifications.push({ name, payload });
+
+  module.startIdleReturnTimer();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(module.currentPage, 3);
+  assert.deepEqual(notifications, []);
+  assert.equal(module.idleReturnTimer, null);
+});
+
+test("pauses idle return while Seymour controls are open", () => {
+  const module = instance([{ page: 0 }, { page: 3 }]);
+  module.currentPage = 3;
+  module.config.idleReturn = { enabled: true, page: 0, delay: 50 };
+
+  module.isOpen = true;
+  module.startIdleReturnTimer();
+  assert.equal(module.idleReturnTimer, null);
+
+  module.isOpen = false;
+  module.systemOpen = true;
+  module.startIdleReturnTimer();
+  assert.equal(module.idleReturnTimer, null);
+
+  module.systemOpen = false;
+  module.interactionActive = true;
+  module.startIdleReturnTimer();
+  assert.equal(module.idleReturnTimer, null);
+});
+
+test("starts a fresh idle period when the selector closes", async () => {
+  const module = instance([{ page: 0 }, { page: 3 }]);
+  module.currentPage = 3;
+  module.config.idleReturn = { enabled: true, page: 0, delay: 5 };
+
+  module.openSelector();
+  assert.equal(module.idleReturnTimer, null);
+  module.closeSelector();
+  assert.notEqual(module.idleReturnTimer, null);
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(module.currentPage, 0);
+});
+
+test("ignores idle return when its destination is not a configured channel", () => {
+  const module = instance([{ page: 3 }]);
+  module.currentPage = 3;
+  module.config.idleReturn = { enabled: true, page: 0, delay: 5 };
+
+  module.startIdleReturnTimer();
+
+  assert.equal(module.idleReturnTimer, null);
+  assert.equal(module.returnToIdlePage(), false);
+  assert.equal(module.currentPage, 3);
 });
 
 test("ignores shortcuts while the user is typing", () => {

@@ -57,7 +57,10 @@ wled: {
     attention: 3,
     timerWarning: 4,
     timerFinished: 5,
-    control: 6
+    control: 6,
+    focusing: null,
+    breakActive: null,
+    breakFinished: null
   }
 }
 ```
@@ -75,21 +78,48 @@ Only one WLED preset can own the ring at a time. Seymour resolves simultaneous
 states in this order:
 
 1. Selector open
-2. Timer finished
-3. Attention
-4. Timer warning
-5. Channel control mode
-6. Idle
+2. System overlay open
+3. Kitchen timer finished
+4. FocusBreak break finished
+5. Other attention
+6. Kitchen timer warning
+7. FocusBreak active break
+8. Channel control mode
+9. Active focus
+10. Idle
 
 Closing the selector restores the state beneath it. Dismissing a completed
 timer restores another outstanding attention source, control mode, or idle as
 appropriate. Attention is reference-counted by source, so one module cannot
 clear another module's alert.
 
-The optional mappings are backward-compatible. If `timerFinished` is absent,
-Seymour uses `attention`. If `timerWarning` or `control` is absent, Seymour uses
-`idle`. Existing installations with only presets 1–3 therefore continue to
-work.
+The optional mappings are backward-compatible. If `timerFinished` or
+`breakFinished` is absent, Seymour uses `attention`. If `timerWarning`,
+`control`, `focusing`, or `breakActive` is absent, Seymour uses `idle`. Existing
+installations with only presets 1–3 therefore continue to work.
+
+## FocusBreak semantics and preset reuse
+
+[MMM-FocusBreak](https://github.com/bwente/MMM-FocusBreak) is optional. It
+publishes ordinary MagicMirror lifecycle notifications and has no knowledge of
+Seymour, WLED, controller addresses, or effects. Seymour translates those
+notifications into three semantic states:
+
+| State | Meaning | Default visual alias |
+| --- | --- | --- |
+| `focusing` | A focus session is running or paused. | `idle` |
+| `breakActive` | A break is running or paused. | `idle` |
+| `breakFinished` | A break ended and focus should resume. | `attention` |
+
+Reuse is intentional. A calm idle effect and an established attention pulse
+already form the appliance's visual language, so FocusBreak does not require
+new WLED preset slots. Users who want distinct focus or break visuals can map
+the optional keys to existing presets or explicitly create new ones in WLED.
+Seymour never defines effects on behalf of FocusBreak.
+
+`breakFinished` remains active until another focus session starts or FocusBreak
+resets. Selector and higher-priority states temporarily override it; closing
+the selector or heartbeat recovery restores it.
 
 ## Test the controller
 
@@ -109,6 +139,8 @@ Then verify the integration in this order:
 5. Send attention from MessageCenter and confirm it remains active until read
    or otherwise acknowledged.
 6. Restart WLED and confirm the heartbeat restores the current state.
+7. If MMM-FocusBreak is installed, start focus, begin a break, and complete the
+   break. With no new mappings, the ring should reuse idle, idle, and attention.
 
 ## Troubleshooting
 

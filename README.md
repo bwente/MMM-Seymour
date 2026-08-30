@@ -54,6 +54,13 @@ while keeping navigation brief and focused.
 running on the physical Seymour appliance, but installation and compatibility
 testing outside that reference system are still in progress.
 
+### Compatibility and validation
+
+MMM-Seymour requires MagicMirror² 2.25.0 or newer. The current automated
+validation target is MagicMirror² 2.37.0 with Node.js 22.21.1. The module is
+also exercised on the physical Seymour appliance; a clean ordinary-MagicMirror
+installation remains required before publishing the first tagged release.
+
 ## Quick Start
 
 Already have MagicMirror running? This temporary demo adds Seymour and
@@ -141,6 +148,8 @@ demonstrates the recommended pairing without personal services or credentials.
   appliance experience, organized by role and dependency level.
 - [Hardware integration](docs/hardware-integration.md) — encoder, GPIO, page,
   and semantic-notification contracts.
+- [System panel](docs/system-panel.md) — triple-press utility overlay,
+  confirmations, and the optional administrator contract.
 - [Channel artwork](docs/channel-art.md) — asset sizes, conventions, and a
   reusable prompt for custom themes.
 - [Changelog](CHANGELOG.md) — features and behavior planned for the first
@@ -206,11 +215,22 @@ remains visible and available from every page:
     showTouchLauncher: true,
     autoDismiss: true,
     autoDismissDelay: 4000,
+    idleReturn: {
+      enabled: false,
+      page: 0,
+      delay: 300000
+    },
     interaction: {
       enabled: true,
       doublePressDelay: 300,
       timeout: 10000,
       label: "CONTROL MODE"
+    },
+    systemPanel: {
+      enabled: true,
+      triplePressDelay: 650,
+      autoDismissDelay: 20000,
+      showDiagnostics: true
     },
     wled: {
       enabled: false,
@@ -222,14 +242,18 @@ remains visible and available from every page:
         attention: 3,
         timerWarning: 4,
         timerFinished: 5,
-        control: 6
+        control: 6,
+        system: null,
+        focusing: null,
+        breakActive: null,
+        breakFinished: null
       }
     },
     channels: [
       { label: "Clock", page: 0, thumbnail: "clock.png" },
       { label: "Calendar", page: 1, thumbnail: "calendar.png" },
       { label: "Weather", page: 2, thumbnail: "weather.png" },
-      { label: "News", page: 3, thumbnail: "news.png" }
+      { label: "News", page: 3, thumbnail: "news.png", idleReturn: false }
     ]
   }
 }
@@ -245,7 +269,9 @@ remains visible and available from every page:
 | `showTouchLauncher` | boolean | `true` | Show a compact on-screen button that opens the channel selector. |
 | `autoDismiss` | boolean | `false` | Close an open selector after inactivity. |
 | `autoDismissDelay` | number | `5000` | Auto-dismiss delay in milliseconds. |
+| `idleReturn` | object | Disabled | Optionally return to a configured channel after local user inactivity. |
 | `interaction` | object | Enabled | Double-press timing and inactivity timeout for interactive channels. |
+| `systemPanel` | object | Enabled | Triple-press utility overlay, read-only diagnostics, inactivity timeout, title, and semantic action definitions. |
 | `remoteControl` | object | Enabled | Optional MMM-Remote-Control API registration. Set `enabled: false` to suppress it. |
 | `selectorLifecycle` | object | `{ open: [], close: [] }` | Optional notification actions sent when the selector opens or closes. Actions accept `notification`, optional `payload`, and an optional `page` filter. |
 | `wled` | object | Disabled | Optional WLED endpoint, heartbeat interval, and semantic preset mappings. New timer and control mappings are opt-in. |
@@ -254,6 +280,34 @@ remains visible and available from every page:
 Each channel accepts `label`, a non-negative integer MMM-pages `page`, and a
 `thumbnail` filename. Seymour resolves that filename inside the selected theme
 folder. Missing thumbnail names use `placeholder.png`.
+
+### Idle return
+
+`idleReturn` provides an optional local home-channel behavior without requiring
+Home Assistant or another automation system:
+
+```js
+idleReturn: {
+  enabled: true,
+  page: 0,
+  delay: 300000
+}
+```
+
+The inactivity timer resets after keyboard, encoder, or pointer input. Seymour
+does not change pages while the selector, System panel, or channel interaction
+mode is open. The destination must be present in `channels`, and the feature is
+disabled by default for backward compatibility.
+
+Stateful channels can opt out individually:
+
+```js
+{ label: "Music", page: 4, thumbnail: "music.png", idleReturn: false }
+```
+
+This keeps music, timers, focus sessions, camera views, or future modules on
+screen when their experience should not be interrupted. Display sleep and wake
+remain separate operating-system or automation responsibilities.
 
 ### Interactive channels
 

@@ -1,6 +1,8 @@
 /* global Module, Log */
 
 Module.register("MMM-Seymour", {
+  requiresVersion: "2.25.0",
+
   defaults: {
     theme: "default",
     selectorSize: "medium",
@@ -11,11 +13,32 @@ Module.register("MMM-Seymour", {
     showTouchLauncher: true,
     autoDismiss: false,
     autoDismissDelay: 5000,
+    idleReturn: {
+      enabled: false,
+      page: 0,
+      delay: 300000
+    },
     interaction: {
       enabled: true,
       doublePressDelay: 300,
       timeout: 10000,
       label: "CONTROL MODE"
+    },
+    systemPanel: {
+      enabled: true,
+      triplePressDelay: 650,
+      autoDismissDelay: 20000,
+      title: "System",
+      showDiagnostics: true,
+      actions: [
+        { id: "volumeDown", label: "Volume down", notification: "SEYMOUR_SYSTEM_VOLUME_DOWN" },
+        { id: "volumeUp", label: "Volume up", notification: "SEYMOUR_SYSTEM_VOLUME_UP" },
+        { id: "quiet", label: "Quiet mode", notification: "SEYMOUR_SYSTEM_QUIET_TOGGLE" },
+        { id: "display", label: "Display sleep", notification: "SEYMOUR_SYSTEM_DISPLAY_SLEEP" },
+        { id: "restart", label: "Restart MagicMirror", notification: "SEYMOUR_SYSTEM_RESTART_MM", confirm: true },
+        { id: "reboot", label: "Reboot Seymour", notification: "SEYMOUR_SYSTEM_REBOOT", confirm: true },
+        { id: "shutdown", label: "Shut down", notification: "SEYMOUR_SYSTEM_SHUTDOWN", confirm: true }
+      ]
     },
     timer: {
       page: null,
@@ -41,7 +64,11 @@ Module.register("MMM-Seymour", {
         attention: 3,
         timerWarning: null,
         timerFinished: null,
-        control: null
+        control: null,
+        system: null,
+        focusing: null,
+        breakActive: null,
+        breakFinished: null
       }
     },
     channels: []
@@ -49,6 +76,10 @@ Module.register("MMM-Seymour", {
 
   getStyles() {
     return ["MMM-Seymour.css"];
+  },
+
+  getTranslations() {
+    return { en: "translations/en.json" };
   },
 
   getTemplate() {
@@ -68,12 +99,42 @@ Module.register("MMM-Seymour", {
       activeIndex: this.activeIndex,
       isOpen: this.isOpen,
       interactionActive: this.interactionActive,
-      interactionLabel:
-        (this.config.interaction && this.config.interaction.label) || "CONTROL MODE",
+      interactionLabel: this.config.interaction && this.config.interaction.label !== "CONTROL MODE"
+        ? this.config.interaction.label
+        : this.translate("CONTROL_MODE"),
       showLabels: this.config.showLabels,
+      systemOpen: this.systemOpen,
+      systemTitle: this.config.systemPanel && this.config.systemPanel.title !== "System"
+        ? this.config.systemPanel.title
+        : this.translate("SYSTEM"),
+      systemActions: this.getSystemActions().map((action, index) => ({
+        ...action,
+        active: index === this.systemIndex,
+        confirming: this.systemConfirmAction === action.id
+      })),
+      systemInfo: this.getSystemInfoTemplateData(),
       selectorSize: this.config.selectorSize,
       enableTouch: this.config.enableTouch,
-      showTouchLauncher: this.config.showTouchLauncher
+      showTouchLauncher: this.config.showTouchLauncher,
+      labels: {
+        openChannels: this.translate("OPEN_CHANNELS"),
+        systemInformation: this.translate("SYSTEM_INFORMATION"),
+        status: this.translate("STATUS"),
+        loading: this.translate("LOADING"),
+        host: this.translate("HOST"),
+        network: this.translate("NETWORK"),
+        uptime: this.translate("UPTIME"),
+        memory: this.translate("MEMORY"),
+        cpuLoad: this.translate("CPU_LOAD"),
+        temperature: this.translate("TEMPERATURE"),
+        software: this.translate("SOFTWARE"),
+        systemActions: this.translate("SYSTEM_ACTIONS"),
+        confirm: this.translate("CONFIRM"),
+        systemHint: this.translate("SYSTEM_HINT"),
+        channels: this.translate("CHANNELS"),
+        availableChannels: this.translate("AVAILABLE_CHANNELS"),
+        unnamedChannel: this.translate("UNNAMED_CHANNEL")
+      }
     };
   },
 
@@ -87,14 +148,22 @@ Module.register("MMM-Seymour", {
     this.attentionActive = false;
     this.attentionSources = new Set();
     this.dismissTimer = null;
+    this.idleReturnTimer = null;
     this.closeTimer = null;
     this.timerFocusTimer = null;
     this.timerWarningFocused = false;
     this.timerWledState = null;
+    this.focusBreakWledState = null;
     this.interactionActive = false;
     this.interactionPage = null;
     this.interactionTimer = null;
     this.pendingPressTimer = null;
+    this.pressCount = 0;
+    this.systemOpen = false;
+    this.systemIndex = 0;
+    this.systemConfirmAction = null;
+    this.systemDismissTimer = null;
+    this.systemInfo = null;
     this.domFocusIndex = -1;
     this.domFocusedElement = null;
     this.domFocusObserver = null;
@@ -102,9 +171,15 @@ Module.register("MMM-Seymour", {
     this.wledConnected = null;
 
     if (this.config.enableKeyboard) {
-      this._boundKeyHandler = (event) => this.handleKeyEvent(event);
+      this._boundKeyHandler = (event) => {
+        this.noteUserActivity();
+        this.handleKeyEvent(event);
+      };
       document.addEventListener("keydown", this._boundKeyHandler);
     }
+
+    this._boundIdleActivityHandler = () => this.noteUserActivity();
+    document.addEventListener("pointerdown", this._boundIdleActivityHandler, { passive: true });
 
     this.sendNotification("QUERY_PAGE_NUMBER");
     this.registerRemoteControlApi();
@@ -117,8 +192,13 @@ Module.register("MMM-Seymour", {
       document.removeEventListener("keydown", this._boundKeyHandler);
       this._boundKeyHandler = null;
     }
+    if (this._boundIdleActivityHandler) {
+      document.removeEventListener("pointerdown", this._boundIdleActivityHandler);
+      this._boundIdleActivityHandler = null;
+    }
 
     this.clearAutoDismissTimer();
+    this.clearIdleReturnTimer();
     if (this.closeTimer) {
       clearTimeout(this.closeTimer);
       this.closeTimer = null;
@@ -128,6 +208,7 @@ Module.register("MMM-Seymour", {
       this.timerFocusTimer = null;
     }
     this.clearPendingPress();
+    this.clearSystemDismissTimer();
     this.clearInteractionTimer();
     this.clearDomFocus();
     this.stopWledHeartbeat();
@@ -161,6 +242,7 @@ Module.register("MMM-Seymour", {
           this.exitInteraction({ notify: true, refresh: false });
         }
         this.currentPage = payload;
+        this.startIdleReturnTimer();
       }
       return;
     }
@@ -191,13 +273,34 @@ Module.register("MMM-Seymour", {
       return;
     }
 
+    if (notification === "SEYMOUR_SYSTEM_OPEN") {
+      this.openSystemPanel();
+      return;
+    }
+
+    if (notification === "SEYMOUR_SYSTEM_CLOSE") {
+      this.closeSystemPanel();
+      return;
+    }
+
     if (notification.startsWith("KITCHEN_TIMER_")) {
       this.handleTimerNotification(notification, payload);
       return;
     }
 
+    if (this.isFocusBreakNotification(notification)) {
+      this.handleFocusBreakNotification(notification, payload);
+      return;
+    }
+
     if (notification === "ATTENTION_ON") this.attentionOn(this.getAttentionSource(payload, sender));
     if (notification === "ATTENTION_OFF") this.attentionOff(this.getAttentionSource(payload, sender));
+  },
+
+  socketNotificationReceived(notification, payload) {
+    if (notification !== "SEYMOUR_SYSTEM_INFO") return;
+    this.systemInfo = payload && typeof payload === "object" ? payload : null;
+    if (this.systemOpen) this.refreshDom(0);
   },
 
   registerRemoteControlApi() {
@@ -236,6 +339,11 @@ Module.register("MMM-Seymour", {
           method: "POST",
           notification: "SEYMOUR_SELECT",
           prettyName: "Select Channel by Page"
+        },
+        system: {
+          method: "GET",
+          notification: "SEYMOUR_SYSTEM_OPEN",
+          prettyName: "Open System Panel"
         }
       }
     });
@@ -269,19 +377,19 @@ Module.register("MMM-Seymour", {
   },
 
   handleAction(action) {
+    this.noteUserActivity();
+    if (this.systemOpen) {
+      if (action === "PRESS") {
+        this.queueSystemPress();
+        return true;
+      }
+      if (action === "ROTATE_LEFT") return this.moveSystemSelection(-1);
+      if (action === "ROTATE_RIGHT") return this.moveSystemSelection(1);
+      return false;
+    }
+
     if (action === "PRESS") {
-      if (this.isOpen) {
-        this.activateChannel();
-        return true;
-      }
-
-      const controls = this.getCurrentChannelControls();
-      if (controls) {
-        this.handleInteractivePress(controls);
-        return true;
-      }
-
-      this.openSelector();
+      this.queuePress();
       return true;
     }
 
@@ -342,41 +450,75 @@ Module.register("MMM-Seymour", {
     return channel.controls;
   },
 
-  handleInteractivePress(controls) {
-    if (this.pendingPressTimer) {
+  queuePress() {
+    this.pressCount += 1;
+    if (this.pressCount >= 3 && this.systemPanelEnabled()) {
       this.clearPendingPress();
-      if (this.interactionActive) this.exitInteraction({ controls });
-      else this.enterInteraction(controls);
+      this.pressCount = 0;
+      this.openSystemPanel();
       return;
     }
-
-    const configuredDelay = Number((this.config.interaction || {}).doublePressDelay);
-    const delay =
-      Number.isFinite(configuredDelay) && configuredDelay >= 0 ? configuredDelay : 300;
-
+    if (this.pendingPressTimer) clearTimeout(this.pendingPressTimer);
+    const configuredDelay = Number((this.config.systemPanel || {}).triplePressDelay);
+    const delay = Number.isFinite(configuredDelay) && configuredDelay >= 0 ? configuredDelay : 650;
     this.pendingPressTimer = setTimeout(() => {
       this.pendingPressTimer = null;
-      if (this.interactionActive) {
-        if (controls.mode === "focus") {
-          this.activateDomFocus(controls);
-        } else if (typeof controls.press === "string" && controls.press) {
-          this.sendNotification(controls.press);
-        }
-        this.startInteractionTimer();
-      } else {
-        this.openSelector();
-      }
+      const count = this.pressCount;
+      this.pressCount = 0;
+      if (count >= 2) this.handleDoublePress();
+      else this.handleSinglePress();
+    }, delay);
+  },
+
+  handleSinglePress() {
+    if (this.isOpen) return this.activateChannel();
+    const controls = this.getCurrentChannelControls();
+    if (this.interactionActive && controls) {
+      if (controls.mode === "focus") this.activateDomFocus(controls);
+      else if (typeof controls.press === "string" && controls.press) this.sendNotification(controls.press);
+      this.startInteractionTimer();
+      return;
+    }
+    this.openSelector();
+  },
+
+  handleDoublePress() {
+    const controls = this.getCurrentChannelControls();
+    if (!controls) {
+      this.openSelector();
+      return;
+    }
+    if (this.interactionActive) this.exitInteraction({ controls });
+    else this.enterInteraction(controls);
+  },
+
+  queueSystemPress() {
+    this.pressCount += 1;
+    if (this.pressCount >= 3) {
+      this.clearPendingPress();
+      this.closeSystemPanel();
+      return;
+    }
+    if (this.pendingPressTimer) clearTimeout(this.pendingPressTimer);
+    const configuredDelay = Number((this.config.systemPanel || {}).triplePressDelay);
+    const delay = Number.isFinite(configuredDelay) && configuredDelay >= 0 ? configuredDelay : 650;
+    this.pendingPressTimer = setTimeout(() => {
+      this.pendingPressTimer = null;
+      const count = this.pressCount;
+      this.pressCount = 0;
+      if (count === 1) this.activateSystemAction();
     }, delay);
   },
 
   clearPendingPress() {
-    if (!this.pendingPressTimer) return;
-    clearTimeout(this.pendingPressTimer);
+    if (this.pendingPressTimer) clearTimeout(this.pendingPressTimer);
     this.pendingPressTimer = null;
+    this.pressCount = 0;
   },
 
   enterInteraction(controls = this.getCurrentChannelControls()) {
     if (!controls) return;
+    this.clearIdleReturnTimer();
     this.interactionActive = true;
     this.interactionPage = this.currentPage;
     if (typeof controls.enter === "string" && controls.enter) {
@@ -401,6 +543,7 @@ Module.register("MMM-Seymour", {
     }
     if (options.refresh !== false) this.refreshDom(0);
     this.applyWledState();
+    this.startIdleReturnTimer();
   },
 
   startInteractionTimer() {
@@ -418,6 +561,150 @@ Module.register("MMM-Seymour", {
     if (!this.interactionTimer) return;
     clearTimeout(this.interactionTimer);
     this.interactionTimer = null;
+  },
+
+  systemPanelEnabled() {
+    return !this.config.systemPanel || this.config.systemPanel.enabled !== false;
+  },
+
+  getSystemActions() {
+    const actions = this.config.systemPanel && this.config.systemPanel.actions;
+    return Array.isArray(actions)
+      ? actions.filter((action) => action && typeof action.notification === "string" && action.notification)
+        .map((action) => ({
+          ...action,
+          label: this.translate({
+            "Volume down": "VOLUME_DOWN",
+            "Volume up": "VOLUME_UP",
+            "Quiet mode": "QUIET_MODE",
+            "Display sleep": "DISPLAY_SLEEP",
+            "Restart MagicMirror": "RESTART_MAGICMIRROR",
+            "Reboot Seymour": "REBOOT_SEYMOUR",
+            "Shut down": "SHUT_DOWN"
+          }[action.label] || action.label)
+        }))
+      : [];
+  },
+
+  getSystemInfoTemplateData() {
+    if ((this.config.systemPanel || {}).showDiagnostics === false) return null;
+    const info = this.systemInfo;
+    if (!info) return { loading: true };
+    const addresses = Array.isArray(info.addresses) ? info.addresses : [];
+    const primaryAddress = addresses.find((address) => address.includes(".")) || addresses[0];
+    return {
+      loading: false,
+      hostname: info.hostname || this.translate("UNKNOWN"),
+      primaryAddress: primaryAddress || this.translate("UNAVAILABLE"),
+      secondaryAddresses: addresses.filter((address) => address !== primaryAddress).join(" · "),
+      uptime: this.formatSystemUptime(info.uptimeSeconds),
+      memory: this.formatSystemMemory(info.memory),
+      cpuLoad:
+        Number.isFinite(info.cpuLoadPercent) ? `${Math.round(info.cpuLoadPercent)}%` : this.translate("UNAVAILABLE"),
+      temperature:
+        Number.isFinite(info.temperatureC) ? `${Math.round(info.temperatureC)}°C` : this.translate("UNAVAILABLE"),
+      magicMirrorVersion: info.magicMirrorVersion || null,
+      nodeVersion: info.nodeVersion || null
+    };
+  },
+
+  formatSystemUptime(seconds) {
+    const totalMinutes = Math.max(0, Math.floor(Number(seconds) / 60));
+    if (!Number.isFinite(totalMinutes)) return this.translate("UNAVAILABLE");
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    if (days) return `${days}d ${hours}h`;
+    if (hours) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  },
+
+  formatSystemMemory(memory) {
+    if (!memory || !Number.isFinite(memory.usedBytes) || !Number.isFinite(memory.totalBytes)) {
+      return this.translate("UNAVAILABLE");
+    }
+    const gibibyte = 1024 ** 3;
+    return `${(memory.usedBytes / gibibyte).toFixed(1)} / ${(memory.totalBytes / gibibyte).toFixed(1)} GB`;
+  },
+
+  openSystemPanel() {
+    if (!this.systemPanelEnabled() || !this.getSystemActions().length) return false;
+    this.clearIdleReturnTimer();
+    this.clearPendingPress();
+    if (this.isOpen) this.closeSelector();
+    this.exitInteraction({ notify: true, refresh: false });
+    this.systemOpen = true;
+    this.clearIdleReturnTimer();
+    this.systemIndex = Math.min(this.systemIndex, this.getSystemActions().length - 1);
+    this.systemConfirmAction = null;
+    this.sendNotification("SEYMOUR_SYSTEM_OPENED", { page: this.currentPage });
+    if ((this.config.systemPanel || {}).showDiagnostics !== false) {
+      this.sendSocketNotification("SEYMOUR_GET_SYSTEM_INFO");
+    }
+    this.refreshDom(150);
+    this.applyWledState();
+    this.startSystemDismissTimer();
+    return true;
+  },
+
+  closeSystemPanel() {
+    if (!this.systemOpen) return false;
+    this.systemOpen = false;
+    this.systemConfirmAction = null;
+    this.clearSystemDismissTimer();
+    this.sendNotification("SEYMOUR_SYSTEM_CLOSED", { page: this.currentPage });
+    this.refreshDom(150);
+    this.applyWledState();
+    this.startIdleReturnTimer();
+    return true;
+  },
+
+  moveSystemSelection(delta) {
+    const actions = this.getSystemActions();
+    if (!actions.length) return false;
+    this.systemIndex = (this.systemIndex + delta + actions.length) % actions.length;
+    this.systemConfirmAction = null;
+    this.refreshDom(0);
+    this.startSystemDismissTimer();
+    return true;
+  },
+
+  activateSystemAction(index = this.systemIndex) {
+    const actions = this.getSystemActions();
+    const action = actions[index];
+    if (!action) return false;
+    this.systemIndex = index;
+    if (action.confirm === true && this.systemConfirmAction !== action.id) {
+      this.systemConfirmAction = action.id;
+      this.refreshDom(0);
+      this.startSystemDismissTimer();
+      return true;
+    }
+    this.systemConfirmAction = null;
+    this.sendNotification(action.notification, action.payload);
+    this.sendNotification("SEYMOUR_SYSTEM_ACTION", { id: action.id, notification: action.notification });
+    if (action.close !== false) this.closeSystemPanel();
+    else {
+      this.refreshDom(0);
+      this.startSystemDismissTimer();
+    }
+    return true;
+  },
+
+  startSystemDismissTimer() {
+    this.clearSystemDismissTimer();
+    if (!this.systemOpen) return;
+    const configuredDelay = Number((this.config.systemPanel || {}).autoDismissDelay);
+    if (!Number.isFinite(configuredDelay) || configuredDelay <= 0) return;
+    this.systemDismissTimer = setTimeout(() => {
+      this.systemDismissTimer = null;
+      this.closeSystemPanel();
+    }, configuredDelay);
+  },
+
+  clearSystemDismissTimer() {
+    if (this.systemDismissTimer) clearTimeout(this.systemDismissTimer);
+    this.systemDismissTimer = null;
   },
 
   getDomFocusElements(controls = {}) {
@@ -558,7 +845,10 @@ Module.register("MMM-Seymour", {
     }
 
     if (event.key === "Escape") {
-      if (this.isOpen) {
+      if (this.systemOpen) {
+        this.closeSystemPanel();
+        event.preventDefault();
+      } else if (this.isOpen) {
         this.closeSelector();
         event.preventDefault();
       }
@@ -575,6 +865,8 @@ Module.register("MMM-Seymour", {
 
   openSelector() {
     if (!this.config.channels.length) return;
+    this.clearIdleReturnTimer();
+    if (this.systemOpen) this.closeSystemPanel();
     if (this.isOpen) {
       this.startAutoDismissTimer();
       return;
@@ -592,6 +884,7 @@ Module.register("MMM-Seymour", {
     else if (this.activeIndex >= this.config.channels.length) this.activeIndex = 0;
 
     this.isOpen = true;
+    this.clearIdleReturnTimer();
     this.sendNotification("SEYMOUR_SELECTOR_OPENED", { page: this.currentPage });
     this.dispatchSelectorLifecycle("open");
     this.refreshDom(150);
@@ -607,6 +900,7 @@ Module.register("MMM-Seymour", {
     this.clearAutoDismissTimer();
     this.refreshDom(150);
     this.applyWledState();
+    this.startIdleReturnTimer();
   },
 
   dispatchSelectorLifecycle(state) {
@@ -686,6 +980,47 @@ Module.register("MMM-Seymour", {
     }
   },
 
+  isFocusBreakNotification(notification) {
+    return [
+      "FOCUS_BREAK_READY",
+      "FOCUS_STARTED",
+      "FOCUS_PAUSED",
+      "FOCUS_RESUMED",
+      "FOCUS_COMPLETED",
+      "BREAK_STARTED",
+      "BREAK_PAUSED",
+      "BREAK_RESUMED",
+      "BREAK_COMPLETED",
+      "FOCUS_BREAK_RESET",
+      "FOCUS_BREAK_PROGRESS"
+    ].includes(notification);
+  },
+
+  handleFocusBreakNotification(notification) {
+    if (notification === "FOCUS_STARTED" || notification === "FOCUS_RESUMED") {
+      this.focusBreakWledState = "focusing";
+      this.applyWledState();
+      return;
+    }
+
+    if (notification === "BREAK_STARTED" || notification === "BREAK_RESUMED") {
+      this.focusBreakWledState = "breakActive";
+      this.applyWledState();
+      return;
+    }
+
+    if (notification === "BREAK_COMPLETED") {
+      this.focusBreakWledState = "breakFinished";
+      this.applyWledState();
+      return;
+    }
+
+    if (notification === "FOCUS_BREAK_READY" || notification === "FOCUS_BREAK_RESET") {
+      this.focusBreakWledState = null;
+      this.applyWledState();
+    }
+  },
+
   focusTimerPage() {
     const timerPage = Number(this.config.timer && this.config.timer.page);
     if (!Number.isInteger(timerPage) || timerPage < 0 || timerPage === this.currentPage) return;
@@ -740,6 +1075,21 @@ Module.register("MMM-Seymour", {
         return;
       }
 
+      const systemDismiss = target.closest("[data-seymour-action='system-dismiss']");
+      if (systemDismiss) {
+        this.closeSystemPanel();
+        return;
+      }
+
+      const systemAction = target.closest("[data-seymour-system-index]");
+      if (systemAction && this.systemOpen) {
+        const index = Number(systemAction.dataset.seymourSystemIndex);
+        if (Number.isInteger(index) && index >= 0 && index < this.getSystemActions().length) {
+          this.activateSystemAction(index);
+        }
+        return;
+      }
+
       const channel = target.closest("[data-seymour-index]");
       if (!channel || !this.isOpen) return;
 
@@ -768,6 +1118,67 @@ Module.register("MMM-Seymour", {
     if (!this.dismissTimer) return;
     clearTimeout(this.dismissTimer);
     this.dismissTimer = null;
+  },
+
+  noteUserActivity() {
+    this.startIdleReturnTimer();
+  },
+
+  getIdleReturnPage() {
+    const idleReturn = this.config.idleReturn || {};
+    const page = Number(idleReturn.page);
+    if (!Number.isInteger(page) || page < 0) return null;
+    const channel = this.config.channels.find(
+      (candidate) => this.getChannelPage(candidate) === page
+    );
+    return channel ? page : null;
+  },
+
+  isIdleReturnBlocked() {
+    if (this.isOpen || this.systemOpen || this.interactionActive) return true;
+    const channel = this.getCurrentChannel();
+    return !!(channel && channel.idleReturn === false);
+  },
+
+  startIdleReturnTimer() {
+    this.clearIdleReturnTimer();
+    const idleReturn = this.config.idleReturn || {};
+    if (idleReturn.enabled !== true) return;
+
+    const returnPage = this.getIdleReturnPage();
+    if (returnPage === null || this.currentPage === returnPage || this.isIdleReturnBlocked()) return;
+
+    const configuredDelay = Number(idleReturn.delay);
+    if (!Number.isFinite(configuredDelay) || configuredDelay <= 0) return;
+
+    this.idleReturnTimer = setTimeout(() => {
+      this.idleReturnTimer = null;
+      this.returnToIdlePage();
+    }, configuredDelay);
+  },
+
+  clearIdleReturnTimer() {
+    if (this.idleReturnTimer) clearTimeout(this.idleReturnTimer);
+    this.idleReturnTimer = null;
+  },
+
+  returnToIdlePage() {
+    const returnPage = this.getIdleReturnPage();
+    if (returnPage === null || this.currentPage === returnPage || this.isIdleReturnBlocked()) {
+      return false;
+    }
+
+    const index = this.config.channels.findIndex(
+      (channel) => this.getChannelPage(channel) === returnPage
+    );
+    this.activeIndex = index;
+    this.sendNotification(this.config.pageChangeNotification, returnPage);
+    this.sendNotification("SEYMOUR_IDLE_RETURNED", {
+      from: this.currentPage,
+      page: returnPage
+    });
+    this.currentPage = returnPage;
+    return true;
   },
 
   getChannelPage(channel) {
@@ -856,19 +1267,27 @@ Module.register("MMM-Seymour", {
     const presets = { ...defaults.presets, ...(wled.presets || {}) };
     const preferredState = this.isOpen
       ? "open"
-      : this.timerWledState === "timerFinished"
-        ? "timerFinished"
-        : this.attentionActive
-          ? "attention"
-          : this.timerWledState === "timerWarning"
-            ? "timerWarning"
-            : this.interactionActive
-              ? "control"
-              : "idle";
+      : this.systemOpen
+        ? "system"
+        : this.timerWledState === "timerFinished"
+          ? "timerFinished"
+          : this.focusBreakWledState === "breakFinished"
+            ? "breakFinished"
+          : this.attentionActive
+            ? "attention"
+            : this.timerWledState === "timerWarning"
+              ? "timerWarning"
+              : this.focusBreakWledState === "breakActive"
+                ? "breakActive"
+                : this.interactionActive
+                  ? "control"
+                  : this.focusBreakWledState === "focusing"
+                    ? "focusing"
+                    : "idle";
     const fallbackState =
-      preferredState === "timerFinished"
+      ["timerFinished", "breakFinished"].includes(preferredState)
         ? "attention"
-        : ["timerWarning", "control"].includes(preferredState)
+        : ["timerWarning", "control", "system", "focusing", "breakActive"].includes(preferredState)
           ? "idle"
           : preferredState;
     const state = Number.isInteger(presets[preferredState]) ? preferredState : fallbackState;
