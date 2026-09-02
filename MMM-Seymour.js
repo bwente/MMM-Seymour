@@ -218,15 +218,22 @@ Module.register("MMM-Seymour", {
   suspend() {},
 
   notificationReceived(notification, payload, sender) {
+    if (notification === "ALL_MODULES_STARTED") {
+      this.registerRemoteControlApi();
+      return;
+    }
+
     if (notification === "DOM_OBJECTS_CREATED") {
       this.bindTouchControls();
       return;
     }
 
     if (notification === "MODULE_DOM_UPDATED") {
-      this.bindTouchControls();
+      const wrapper = document.getElementById(this.identifier);
+      this.reconcileRenderedState(wrapper);
+      this.bindTouchControls(wrapper);
       if (this.isOpen) {
-        this.centerActiveItem(document.getElementById(this.identifier));
+        this.centerActiveItem(wrapper);
       }
       return;
     }
@@ -389,6 +396,11 @@ Module.register("MMM-Seymour", {
     }
 
     if (action === "PRESS") {
+      if (this.isOpen) {
+        this.clearPendingPress();
+        this.activateChannel();
+        return true;
+      }
       this.queuePress();
       return true;
     }
@@ -865,6 +877,11 @@ Module.register("MMM-Seymour", {
 
   openSelector() {
     if (!this.config.channels.length) return;
+    this.clearPendingPress();
+    if (this.closeTimer) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = null;
+    }
     this.clearIdleReturnTimer();
     if (this.systemOpen) this.closeSystemPanel();
     if (this.isOpen) {
@@ -893,14 +910,31 @@ Module.register("MMM-Seymour", {
   },
 
   closeSelector() {
-    if (!this.isOpen) return;
+    const wasOpen = this.isOpen;
     this.isOpen = false;
+    const wrapper = document.getElementById(this.identifier);
+    this.reconcileRenderedState(wrapper);
+    if (!wasOpen) {
+      this.refreshDom(0);
+      return false;
+    }
     this.sendNotification("SEYMOUR_SELECTOR_CLOSED", { page: this.currentPage });
     this.dispatchSelectorLifecycle("close");
     this.clearAutoDismissTimer();
     this.refreshDom(150);
     this.applyWledState();
     this.startIdleReturnTimer();
+    return true;
+  },
+
+  reconcileRenderedState(wrapper = document.getElementById(this.identifier)) {
+    if (!wrapper || typeof wrapper.querySelector !== "function") return false;
+    const root = wrapper.querySelector(".seymour-root");
+    if (!root || !root.classList || typeof root.classList.toggle !== "function") return false;
+    root.classList.toggle("is-open", this.isOpen === true);
+    root.classList.toggle("is-system-open", this.systemOpen === true);
+    root.classList.toggle("is-interacting", this.interactionActive === true);
+    return true;
   },
 
   dispatchSelectorLifecycle(state) {
@@ -1052,10 +1086,8 @@ Module.register("MMM-Seymour", {
     activeItem.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   },
 
-  bindTouchControls() {
+  bindTouchControls(wrapper = document.getElementById(this.identifier)) {
     if (this.config.enableTouch === false) return;
-
-    const wrapper = document.getElementById(this.identifier);
     if (!wrapper || wrapper.dataset.seymourTouchBound === "true") return;
 
     wrapper.dataset.seymourTouchBound = "true";
@@ -1065,12 +1097,14 @@ Module.register("MMM-Seymour", {
 
       const launcher = target.closest("[data-seymour-action='open']");
       if (launcher) {
+        this.clearPendingPress();
         this.openSelector();
         return;
       }
 
       const dismiss = target.closest("[data-seymour-action='dismiss']");
       if (dismiss) {
+        this.clearPendingPress();
         this.closeSelector();
         return;
       }
@@ -1096,6 +1130,7 @@ Module.register("MMM-Seymour", {
       const index = Number(channel.dataset.seymourIndex);
       if (!Number.isInteger(index) || index < 0 || index >= this.config.channels.length) return;
 
+      this.clearPendingPress();
       this.activeIndex = index;
       this.activateChannel();
     });

@@ -5,7 +5,7 @@
       <span>{{ interactionLabel }}</span>
     </div>
   {% endif %}
-  {% if enableTouch and showTouchLauncher and not isOpen and not systemOpen %}
+  {% if enableTouch and showTouchLauncher %}
     <button class="seymour-launcher" type="button" data-seymour-action="open" aria-label="{{ labels.openChannels }}">
       <span aria-hidden="true">&#9776;</span>
     </button>

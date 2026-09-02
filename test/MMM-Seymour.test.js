@@ -43,6 +43,18 @@ test("stock example can be loaded directly by the MagicMirror browser", () => {
   assert.equal(browserContext.config.modules.length > 0, true);
 });
 
+test("touch launcher remains in every selector template state for DOM recovery", () => {
+  const template = fs.readFileSync(require.resolve("../templates/selector.njk"), "utf8");
+  const launcherCondition = template.match(
+    /\{% if ([^%]+) %\}\s*<button class="seymour-launcher"/
+  );
+
+  assert.ok(launcherCondition);
+  assert.match(launcherCondition[1], /enableTouch/);
+  assert.match(launcherCondition[1], /showTouchLauncher/);
+  assert.doesNotMatch(launcherCondition[1], /isOpen|systemOpen/);
+});
+
 function instance(channels = []) {
   return {
     ...definition,
@@ -255,6 +267,27 @@ test("can disable MMM-Remote-Control API registration", () => {
   module.start();
 
   assert.deepEqual(notifications, ["QUERY_PAGE_NUMBER"]);
+});
+
+test("re-registers the Remote Control API after every module has started", () => {
+  const module = instance([{ page: 0 }]);
+  const notifications = [];
+  module.sendNotification = (name, payload) => notifications.push({ name, payload });
+
+  module.notificationReceived("ALL_MODULES_STARTED");
+
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].name, "REGISTER_API");
+  assert.equal(notifications[0].payload.path, "seymour");
+  assert.deepEqual(Object.keys(notifications[0].payload.actions), [
+    "open",
+    "close",
+    "previous",
+    "next",
+    "activate",
+    "select",
+    "system"
+  ]);
 });
 
 test("handles explicit MMM-Remote-Control selector actions", () => {
@@ -520,6 +553,23 @@ test("maps GPIO notifications to selector actions", async () => {
 
   module.notificationReceived("SEYMOUR_ROTATE_LEFT");
   assert.equal(module.activeIndex, 0);
+});
+
+test("encoder press activates an open selector immediately", () => {
+  const module = instance([{ page: 0 }, { page: 2 }]);
+  module.isOpen = true;
+  module.activeIndex = 1;
+  module.config.systemPanel = { ...definition.defaults.systemPanel, triplePressDelay: 650 };
+  const notifications = [];
+  module.sendNotification = (name, payload) => notifications.push({ name, payload });
+
+  module.notificationReceived("SEYMOUR_PRESS");
+
+  assert.equal(module.currentPage, 2);
+  assert.deepEqual(notifications, [{ name: "PAGE_CHANGED", payload: 2 }]);
+  assert.equal(module.pendingPressTimer, null);
+  assert.equal(module.pressCount, 0);
+  if (module.closeTimer) clearTimeout(module.closeTimer);
 });
 
 test("single press retains selector behavior on an interactive channel", async () => {
@@ -1300,6 +1350,103 @@ test("touch launcher opens and scrim dismisses the selector", () => {
   } finally {
     document.getElementById = originalGetElementById;
   }
+});
+
+test("touch opening cancels a queued encoder press", async () => {
+  const module = instance([{ page: 0 }, { page: 1 }]);
+  module.currentPage = 0;
+  module.config.systemPanel = { ...definition.defaults.systemPanel, triplePressDelay: 5 };
+  let clickHandler;
+  const notifications = [];
+  module.sendNotification = (name, payload) => notifications.push({ name, payload });
+  const wrapper = {
+    dataset: {},
+    addEventListener(_name, handler) {
+      clickHandler = handler;
+    }
+  };
+  const originalGetElementById = document.getElementById;
+  document.getElementById = () => wrapper;
+
+  try {
+    module.handleAction("PRESS");
+    clickHandler = null;
+    module.bindTouchControls();
+    clickHandler({
+      target: {
+        closest(selector) {
+          return selector === "[data-seymour-action='open']" ? {} : null;
+        }
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  } finally {
+    module.clearPendingPress();
+    document.getElementById = originalGetElementById;
+  }
+
+  assert.equal(module.isOpen, true);
+  assert.equal(module.currentPage, 0);
+  assert.equal(notifications.some(({ name }) => name === "PAGE_CHANGED"), false);
+});
+
+test("redundant close removes a stale rendered selector", () => {
+  const module = instance([{ page: 0 }]);
+  module.isOpen = false;
+  const states = new Map([["is-open", true]]);
+  const root = {
+    classList: {
+      toggle(name, enabled) {
+        states.set(name, enabled);
+      }
+    }
+  };
+  const wrapper = { querySelector: () => root };
+  const originalGetElementById = document.getElementById;
+  let refreshes = 0;
+  document.getElementById = () => wrapper;
+  module.refreshDom = () => { refreshes += 1; };
+
+  try {
+    assert.equal(module.closeSelector(), false);
+  } finally {
+    document.getElementById = originalGetElementById;
+  }
+
+  assert.equal(states.get("is-open"), false);
+  assert.equal(refreshes, 1);
+});
+
+test("DOM completion reconciles stale selector classes with current state", () => {
+  const module = instance([{ page: 0 }]);
+  module.isOpen = false;
+  module.systemOpen = true;
+  module.interactionActive = false;
+  const states = new Map([["is-open", true]]);
+  const root = {
+    classList: {
+      toggle(name, enabled) {
+        states.set(name, enabled);
+      }
+    }
+  };
+  const wrapper = {
+    dataset: {},
+    querySelector: () => root,
+    addEventListener() {}
+  };
+  const originalGetElementById = document.getElementById;
+  document.getElementById = () => wrapper;
+
+  try {
+    module.notificationReceived("MODULE_DOM_UPDATED");
+  } finally {
+    document.getElementById = originalGetElementById;
+  }
+
+  assert.equal(states.get("is-open"), false);
+  assert.equal(states.get("is-system-open"), true);
+  assert.equal(states.get("is-interacting"), false);
 });
 
 test("touching a channel activates its page", () => {

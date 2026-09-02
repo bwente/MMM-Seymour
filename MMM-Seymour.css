@@ -175,6 +175,13 @@
   touch-action: manipulation;
 }
 
+.seymour-root.is-open .seymour-launcher,
+.seymour-root.is-system-open .seymour-launcher {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .seymour-launcher:focus-visible {
   outline: 3px solid rgba(255, 255, 255, 0.95);
   outline-offset: 3px;
